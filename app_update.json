@@ -1,0 +1,6 @@
+{
+  "version": "1.1.0",
+  "url": "https://gitee.com/zhen-z/stellasora_gacha/releases/download/v1.1.0/StellaSoraGachaTool.exe",
+  "sha256": "5a671dad4e16d3411bd5c65558588d47cd3cd0615a8e27276625817be675ec94",
+  "notes": "新增软件在线更新：启动后自动检查，也可点击检查更新；下载完成后自动替换并重启。"
+}
