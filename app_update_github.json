@@ -1,6 +1,6 @@
 {
-  "version": "1.2.21",
-  "url": "https://github.com/zhenkotone/stellasora_gacha/releases/download/v1.2.21/StellaSoraGachaTool-Portable-1.2.21.zip",
-  "sha256": "9e432acca2b0baf5ca20368acd9620a62cbc730721c4b0b9ebe7dbf81a03f4cc",
-  "notes": "旅人限时池单期满120抽时，首页卡池详情和五星招募记录展示当期UP的井奖励；每期一个、换期清零，仅用于展示，不修改JSON或上传数据，不影响抽数、五星统计、垫抽和平均抽数。"
+  "version": "1.2.22",
+  "url": "https://github.com/zhenkotone/stellasora_gacha/releases/download/v1.2.22/StellaSoraGachaTool-Portable-1.2.22.zip",
+  "sha256": "05848d060d1967c50b10bbf7d73c45fb8027c1156c2c80c29a230102e30fd185",
+  "notes": "自动识别 xtlr.exe / StellaSora.exe，多客户端运行时按程序位置和 PID 选择；打包版启动时申请管理员权限，取消授权会退出。归档继续使用完整 UID.json，不按前缀区分区服。海外客户端实际读取兼容性仍需验证。"
 }
