@@ -5,12 +5,15 @@ import struct
 from ctypes import wintypes
 from dataclasses import dataclass
 from typing import Iterator
+from collections.abc import Iterable
 
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 PROCESS_QUERY_INFORMATION = 0x0400
 PROCESS_VM_READ = 0x0010
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+GAME_EXECUTABLES = ("xtlr.exe", "StellaSora.exe")
 TH32CS_SNAPPROCESS = 0x00000002
 MEM_COMMIT = 0x1000
 PAGE_GUARD = 0x100
@@ -79,6 +82,15 @@ kernel32.VirtualQueryEx.argtypes = [
 kernel32.VirtualQueryEx.restype = ctypes.c_size_t
 kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 kernel32.CloseHandle.restype = wintypes.BOOL
+kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+
+
+@dataclass(frozen=True)
+class GameProcess:
+    name: str
+    pid: int
+    path: str = ""
 
 
 @dataclass(frozen=True)
@@ -92,21 +104,71 @@ class MemoryRegion:
         return self.base + self.size
 
 
-def find_process_id(executable: str) -> int:
+def running_processes() -> list[tuple[str, int]]:
     snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-    if snapshot == INVALID_HANDLE_VALUE:
+    if not snapshot or snapshot == INVALID_HANDLE_VALUE:
         raise OSError(ctypes.get_last_error(), "CreateToolhelp32Snapshot failed")
     try:
+        processes: list[tuple[str, int]] = []
         entry = PROCESSENTRY32W()
         entry.dwSize = ctypes.sizeof(entry)
         ok = kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
         while ok:
-            if entry.szExeFile.casefold() == executable.casefold():
-                return int(entry.th32ProcessID)
+            processes.append((entry.szExeFile, int(entry.th32ProcessID)))
             ok = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+        error = ctypes.get_last_error()
+        if error not in (0, 18):  # ERROR_NO_MORE_FILES is the normal end of enumeration.
+            raise OSError(error, "Process enumeration failed")
+        return processes
     finally:
         kernel32.CloseHandle(snapshot)
-    raise ProcessLookupError(f"未找到游戏进程 {executable}，请先登录游戏并进入主界面")
+
+
+def _process_image_path(pid: int) -> str:
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return ""
+    try:
+        size = wintypes.DWORD(32768)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        if kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+            return buffer.value
+        return ""
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _executable_names(executable: str | Iterable[str] | None) -> tuple[str, ...]:
+    names = GAME_EXECUTABLES if executable is None else (executable,) if isinstance(executable, str) else tuple(executable)
+    if not names or any(not isinstance(name, str) or not name.strip() for name in names):
+        raise ValueError("游戏进程名不能为空")
+    return names
+
+
+def find_game_processes(executable: str | Iterable[str] | None = None) -> list[GameProcess]:
+    wanted = {name.casefold() for name in _executable_names(executable)}
+    return sorted(
+        (GameProcess(name, pid, _process_image_path(pid))
+         for name, pid in running_processes() if name.casefold() in wanted),
+        key=lambda process: (process.name.casefold(), process.pid),
+    )
+
+
+def find_process_id(executable: str | Iterable[str] | None = None, *, pid: int | None = None) -> int:
+    names = _executable_names(executable)
+    if pid is not None and (not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0):
+        raise ValueError("PID 必须是正整数")
+    processes = find_game_processes(names)
+    if pid is not None:
+        if any(process.pid == pid for process in processes):
+            return pid
+        raise ProcessLookupError(f"所选游戏进程 PID {pid} 已退出或不再匹配，请重新刷新并选择客户端")
+    if len(processes) == 1:
+        return processes[0].pid
+    if not processes:
+        raise ProcessLookupError(f"未找到游戏进程 {' / '.join(names)}，请先登录游戏并进入主界面")
+    choices = "、".join(f"{process.name} (PID {process.pid})" for process in processes)
+    raise ProcessLookupError(f"检测到多个游戏客户端：{choices}。请在界面选择一个，或通过 --pid 指定，避免混入其他账号")
 
 
 class RemoteProcess:
@@ -218,4 +280,3 @@ class RemoteProcess:
                     search_from = found + 1
                 tail = data[-overlap:] if overlap else b""
                 offset += take
-

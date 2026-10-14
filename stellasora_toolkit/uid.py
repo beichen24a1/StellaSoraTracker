@@ -25,7 +25,7 @@ def _read_candidate(process: RemoteProcess, address: int, *, encoding: str, limi
     return match.group(1) if match else None
 
 
-def read_game_uid(process_name: str = "xtlr.exe") -> str:
+def read_game_uid(process_name: str | None = None, *, process_id: int | None = None) -> str:
     """Read the currently loaded game UID through a read-only process handle.
 
     StellaSora currently keeps a UTF-16 UI/cache string such as ``UID:123456789``
@@ -33,7 +33,7 @@ def read_game_uid(process_name: str = "xtlr.exe") -> str:
     process or inspect network credentials.
     """
 
-    pid = find_process_id(process_name)
+    pid = find_process_id(process_name, pid=process_id)
     with RemoteProcess(pid) as process:
         return read_game_uid_from_process(process)
 

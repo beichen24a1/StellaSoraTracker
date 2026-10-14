@@ -11,11 +11,13 @@ import threading
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageOps, ImageTk
 
+from .admin import ensure_administrator
+from .process import GameProcess, find_game_processes
 from .app_updater import (
     UPDATE_MANIFEST_URL,
     AppUpdate,
@@ -60,7 +62,7 @@ HEADER = "#607d98"
 POOL_COLORS = ("#7776aa", "#4d9ba0", "#5d82a9", "#8e6d9c")
 FIVE_STAR_AVATAR_SIZE = 70
 FIVE_STAR_TILE_IMAGE_SIZE = 78
-APP_VERSION = "1.2.21"
+APP_VERSION = "1.2.22"
 GACHA_CATEGORY_ORDER = (
     CATEGORY_TRAVELER_LIMITED,
     CATEGORY_DISC_LIMITED,
@@ -147,6 +149,49 @@ OFFICIAL_LIMITED_POOL_INFO = {
     21144: ("浮月倒映清潭上", "2026-04-30", "2026-05-19", "潋滟故池水"),
     21155: ("海天共一色", "2026-05-26", "2026-06-16", "波光漫游"),
 }
+
+
+class GameProcessDialog(simpledialog.Dialog):
+    def __init__(self, parent: tk.Tk, processes: list[GameProcess]):
+        self.processes = processes
+        super().__init__(parent, title="选择游戏客户端")
+
+    def body(self, master: tk.Frame):
+        self.tree = ttk.Treeview(master, columns=("name", "pid", "path"), show="headings", selectmode="browse", height=min(7, len(self.processes)))
+        for column, label, width in (("name", "客户端", 160), ("pid", "PID", 80), ("path", "程序位置", 380)):
+            self.tree.heading(column, text=label)
+            self.tree.column(column, width=width, minwidth=width, stretch=False)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(master, orient="vertical", command=self.tree.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        for index, process in enumerate(self.processes):
+            self.tree.insert("", "end", iid=str(index), values=(process.name, process.pid, process.path or "-"))
+        self.path_var = tk.StringVar(master=master, value=self.processes[0].path or "-")
+        ttk.Label(master, textvariable=self.path_var, wraplength=610, justify="left").grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.tree.bind("<<TreeviewSelect>>", self._show_path)
+        self.tree.selection_set("0")
+        self.tree.focus("0")
+        self.tree.bind("<Double-1>", self.ok)
+        return self.tree
+
+    def _show_path(self, _event=None) -> None:
+        if self.tree.selection():
+            self.path_var.set(self.processes[int(self.tree.selection()[0])].path or "-")
+
+    def buttonbox(self) -> None:
+        buttons = ttk.Frame(self)
+        ttk.Button(buttons, text="读取", command=self.ok).pack(side="left", padx=5)
+        ttk.Button(buttons, text="取消", command=self.cancel).pack(side="left", padx=5)
+        buttons.pack(pady=10)
+        self.bind("<Return>", self.ok)
+        self.bind("<Escape>", self.cancel)
+
+    def validate(self) -> bool:
+        return bool(self.tree.selection())
+
+    def apply(self) -> None:
+        self.result = self.processes[int(self.tree.selection()[0])]
 
 
 class StellaSoraApp:
@@ -454,15 +499,16 @@ class StellaSoraApp:
             font=("Microsoft YaHei UI", 16, "bold"),
             anchor="w",
         ).grid(row=0, column=0, sticky="ew", pady=(0, 4))
-        paragraph("本工具面向《星塔旅人》国服 Windows 客户端，仅用于整理当前账号已经加载的招募历史。", muted=True)
+        paragraph("本工具用于整理《星塔旅人》Windows 客户端中当前账号已加载的招募历史，可自动识别 xtlr.exe / StellaSora.exe。", muted=True)
 
         heading("使用方法")
         paragraph("1. 登录游戏并进入主界面，在游戏内依次打开旅人限时、秘纹限时、旅人常驻、秘纹常驻四类招募记录，等待每个记录列表显示。")
-        paragraph("2. 回到本工具点击“刷新游戏数据”。读取完成后，五星一览和招募记录会自动更新；读取失败时可尝试以管理员身份运行。")
+        paragraph("2. 打开本工具并确认 Windows 管理员授权提示，再点击“刷新游戏数据”；多个游戏客户端同时运行时，按程序位置和 PID 选择本次要读取的客户端。取消授权时软件不会启动。")
         paragraph("3. 新角色和秘纹图片会随软件版本内置更新；软件版本可通过“检查更新”进行升级。")
 
         heading("数据与备份")
         paragraph("每次刷新都会合并更新 exports/UID.json，其中 UID 是当前游戏账号的数字标识。官方记录可能只保留最近半年，请定期备份该文件。")
+        paragraph("归档使用从所选进程读取的完整 UID，不按 UID 前缀推断区服；当前仍使用内置中文名称和卡池资料，海外客户端的 UID 与记录读取兼容性需要实际验证。")
         paragraph("点击“上传抽卡记录到蕾姆”会上传完整 UID.json。同一 UID 在本地首次上传成功时弹出绑定指令，之后不再弹出；设置中始终可以复制指令。现有接口每次上传后仍需向蕾姆发送该指令确认更新，上传成功不代表正式记录已经更新。")
         paragraph("归档包含游戏 UID 和抽卡记录，不包含密码、Cookie、SDK token、进程地址或网络会话数据。上传仅在点击上传按钮后进行，请勿公开分享归档。")
 
@@ -958,7 +1004,19 @@ class StellaSoraApp:
         self._set_upload_button_state()
 
     def refresh(self) -> None:
-        if self.busy or self.update_checking:
+        if self.busy or self.update_checking or self.uploading:
+            return
+        try:
+            processes = find_game_processes()
+            if not processes:
+                raise ProcessLookupError("未找到 xtlr.exe / StellaSora.exe，请先登录游戏并进入主界面")
+            selected = processes[0] if len(processes) == 1 else GameProcessDialog(self.root, processes).result
+            if selected is None:
+                self.status_var.set("已取消读取游戏数据")
+                return
+        except (OSError, ValueError, LookupError) as error:
+            self.status_var.set("未能选择游戏客户端")
+            messagebox.showerror("读取失败", str(error), parent=self.root)
             return
         self.busy = True
         self.refresh_button.state(["disabled"])
@@ -966,12 +1024,14 @@ class StellaSoraApp:
         self.update_button.state(["disabled"])
         self.progress.grid()
         self.progress.start(12)
-        self.status_var.set("正在读取游戏数据")
+        self.status_var.set(f"正在读取 {selected.name} · PID {selected.pid}")
 
         def work() -> None:
             try:
                 snapshot = extract_snapshot(
                     self.output_dir,
+                    process_name=selected.name,
+                    process_id=selected.pid,
                     progress=lambda message: self.events.put(("progress", message)),
                 )
                 self.events.put(("complete", snapshot))
@@ -1756,13 +1816,31 @@ def build_parser() -> argparse.ArgumentParser:
     default_root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path.cwd()
     parser.add_argument("--output", type=Path, default=default_root / "exports")
     parser.add_argument("--smoke-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--elevated", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    output_dir = args.output.resolve()
+    if not args.smoke_test:
+        try:
+            if not ensure_administrator(["--output", str(output_dir)], relaunch_attempted=args.elevated):
+                return 0
+        except OSError as error:
+            error_root = tk.Tk()
+            error_root.withdraw()
+            try:
+                messagebox.showerror(
+                    "管理员启动未完成",
+                    f"未获得管理员权限，软件未启动。\n重新打开软件并确认 Windows 授权提示，或右键选择“以管理员身份运行”。\n\n{error}",
+                    parent=error_root,
+                )
+            finally:
+                error_root.destroy()
+            return 1
     root = tk.Tk()
-    StellaSoraApp(root, args.output.resolve())
+    StellaSoraApp(root, output_dir)
     if args.smoke_test:
         root.update_idletasks()
         root.destroy()

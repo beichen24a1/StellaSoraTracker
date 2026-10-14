@@ -37,11 +37,13 @@ class Snapshot:
 
 def extract_snapshot(
     output_dir: Path,
-    process_name: str = "xtlr.exe",
+    process_name: str | None = None,
     progress: ProgressCallback | None = None,
+    *,
+    process_id: int | None = None,
 ) -> Snapshot:
     report = progress or (lambda _message: None)
-    pid = find_process_id(process_name)
+    pid = find_process_id(process_name, pid=process_id)
     report(f"已连接游戏进程 PID {pid}，正在读取游戏 UID")
     with RemoteProcess(pid) as process:
         uid = read_game_uid_from_process(process)
