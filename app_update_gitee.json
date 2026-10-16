@@ -1,6 +1,6 @@
 {
-  "version": "1.2.22",
-  "url": "https://gitee.com/zhen-z/stellasora_gacha/releases/download/v1.2.22/StellaSoraGachaTool-Portable-1.2.22.zip",
-  "sha256": "e92eea701138cc1d0c06cff7b885c9d26d237d929ec86ab5e4e436d4bb3b9180",
-  "notes": "自动识别 xtlr.exe / StellaSora.exe，多客户端运行时按程序位置和 PID 选择；打包版启动时申请管理员权限，取消授权会退出。归档继续使用完整 UID.json，不按前缀区分区服。海外客户端实际读取兼容性仍需验证。"
+  "version": "1.2.23",
+  "url": "https://gitee.com/zhen-z/stellasora_gacha/releases/download/v1.2.23/StellaSoraGachaTool-Portable-1.2.23.zip",
+  "sha256": "4d13661a7b9578115031b5b6ebf64098897d23b68307a79427e5b231730a286d",
+  "notes": "新增防串号保护：同次游戏启动换 UID 时停止保存，读取前后核验账号，保存和上传前检查不同 UID 归档的异常重复。换号仍请完全退出并重启游戏。已混入的旧档不会自动删除或修复，请先备份整个 exports，再分别读取核对。"
 }
