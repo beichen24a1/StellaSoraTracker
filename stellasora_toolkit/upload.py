@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .account_guard import AccountSafetyError, check_account_records
 
 UPLOAD_URL = "https://yostar.772077.xyz:7777/stellasora/api/gacha/upload"
 UID_RE = re.compile(r"^[0-9]{5,15}$")
@@ -118,6 +119,10 @@ def upload_archive(
     if not archive_path.is_file():
         raise UploadError(f"未找到归档文件：{archive_path.name}")
     record = _read_record(archive_path, uid)
+    try:
+        check_account_records(archive_path.parent, uid, record["categories"])
+    except AccountSafetyError as error:
+        raise UploadError(str(error)) from error
     body = json.dumps({"uid": uid, "record": record}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     if len(body) > MAX_PAYLOAD_BYTES:
         raise UploadError("归档超过服务器允许的 16 MiB 大小限制")

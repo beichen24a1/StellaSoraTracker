@@ -7,11 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from .account_guard import AccountSafetyError, block_process_session, check_account_records, check_process_account
 from .discovery import LuaTableDiscovery
 from .exporter import export_all, sanitize_gacha_categories
 from .lua53 import Lua53Reader
 from .process import RemoteProcess, find_process_id
-from .uid import read_game_uid_from_process
+from .uid import AmbiguousUidError, read_game_uid_from_process
 
 
 ProgressCallback = Callable[[str], None]
@@ -43,10 +44,17 @@ def extract_snapshot(
     process_id: int | None = None,
 ) -> Snapshot:
     report = progress or (lambda _message: None)
+    output_dir = output_dir.resolve()
     pid = find_process_id(process_name, pid=process_id)
     report(f"已连接游戏进程 PID {pid}，正在读取游戏 UID")
     with RemoteProcess(pid) as process:
-        uid = read_game_uid_from_process(process)
+        creation_time = process.get_creation_time()
+        try:
+            uid = read_game_uid_from_process(process)
+        except AmbiguousUidError as error:
+            block_process_session(output_dir, pid, creation_time)
+            raise AccountSafetyError(str(error)) from error
+        check_process_account(output_dir, pid, creation_time, uid)
         report("游戏 UID 读取完成，正在定位招募数据")
         lua = Lua53Reader(process)
         discovery = LuaTableDiscovery(process, lua)
@@ -54,13 +62,31 @@ def extract_snapshot(
             "_mapGachaHistory",
             {"_mapGachaCount", "_mapGachaTotalTimes", "_mapTotalGachaTimes", "_openedPool"},
         )
-    report("招募数据读取完成，正在生成 UID.json 和 CSV")
+        report("招募数据读取完成，正在复核游戏 UID 和账号归属")
+        try:
+            # Reopen to refresh the memory-region map and detect a reused PID.
+            with RemoteProcess(pid) as verification:
+                if verification.get_creation_time() != creation_time:
+                    raise AccountSafetyError("读取期间游戏进程已重新启动，已停止保存，请重新读取")
+                verified_uid = read_game_uid_from_process(verification)
+                check_process_account(output_dir, pid, creation_time, verified_uid)
+        except AccountSafetyError:
+            block_process_session(output_dir, pid, creation_time)
+            raise
+        except (OSError, LookupError) as error:
+            block_process_session(output_dir, pid, creation_time)
+            raise AccountSafetyError(
+                "读取结束时无法确认游戏 UID，已停止保存。请完全退出并重启游戏后重试。"
+            ) from error
     current_categories = sanitize_gacha_categories(raw_gacha)
-    categories = merge_gacha_categories(_load_archive(output_dir.resolve(), uid), current_categories)
+    categories = merge_gacha_categories(_load_archive(output_dir, uid), current_categories)
+    check_account_records(output_dir, uid, categories)
+    check_process_account(output_dir, pid, creation_time, uid)
+    report("账号校验完成，正在生成 UID.json 和 CSV")
     gacha = [group for groups in categories.values() for group in groups]
-    files = tuple(export_all(output_dir.resolve(), gacha, None, categories))
-    _write_archive(output_dir.resolve(), uid, categories)
-    return Snapshot(gacha, [], (archive_path_for_uid(output_dir.resolve(), uid), *files), categories, uid)
+    files = tuple(export_all(output_dir, gacha, None, categories))
+    _write_archive(output_dir, uid, categories)
+    return Snapshot(gacha, [], (archive_path_for_uid(output_dir, uid), *files), categories, uid)
 
 
 def _group_key(group: dict) -> tuple:
@@ -112,6 +138,11 @@ def _load_archive(output_dir: Path, uid: str) -> dict[int, list[dict]]:
             files = sorted(output_dir.glob("stellasora_gacha_*.json"), key=lambda path: path.stat().st_mtime)
             if files:
                 payload = json.loads(files[-1].read_text(encoding="utf-8-sig"))
+        if isinstance(payload, dict) and payload and payload.get("uid") is None:
+            raise AccountSafetyError(
+                "发现未标明 UID 的旧版归档，无法确认属于当前账号，已停止自动合并。"
+                "请先备份旧归档，移至单独目录保留核对后，再读取当前账号；不要直接删除旧记录。"
+            )
         if isinstance(payload, dict) and payload.get("uid", uid) != uid:
             return {}
     categories = payload.get("categories", {}) if isinstance(payload, dict) else {}

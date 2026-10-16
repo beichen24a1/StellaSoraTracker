@@ -34,6 +34,7 @@ from .catalog import (
     traveler_name,
 )
 from .service import LEGACY_ARCHIVE_FILENAME, Snapshot, archive_path_for_uid, extract_snapshot, load_latest_snapshot
+from .account_guard import AccountSafetyError
 from .upload import mark_upload_success, upload_archive
 from .gacha_display import SparkReward, build_spark_rewards, insert_spark_rewards
 from .gacha_stats import (
@@ -62,7 +63,7 @@ HEADER = "#607d98"
 POOL_COLORS = ("#7776aa", "#4d9ba0", "#5d82a9", "#8e6d9c")
 FIVE_STAR_AVATAR_SIZE = 70
 FIVE_STAR_TILE_IMAGE_SIZE = 78
-APP_VERSION = "1.2.22"
+APP_VERSION = "1.2.23"
 GACHA_CATEGORY_ORDER = (
     CATEGORY_TRAVELER_LIMITED,
     CATEGORY_DISC_LIMITED,
@@ -1170,8 +1171,12 @@ class StellaSoraApp:
                     self.status_var.set(f"读取完成 · {datetime.now():%H:%M:%S}")
                 elif event == "error":
                     self._finish_busy()
-                    self.status_var.set("读取失败")
-                    messagebox.showerror("读取失败", str(payload), parent=self.root)
+                    if isinstance(payload, AccountSafetyError):
+                        self.status_var.set("防串号保护已停止本次读取，仍显示上次本地记录")
+                        messagebox.showwarning("防串号保护", str(payload) + "\n\n当前界面仍显示上次本地记录。", parent=self.root)
+                    else:
+                        self.status_var.set("读取失败")
+                        messagebox.showerror("读取失败", str(payload), parent=self.root)
                 elif event == "upload_complete":
                     self._handle_upload_complete(payload)
                 elif event == "upload_error":

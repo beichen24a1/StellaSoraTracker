@@ -3,6 +3,7 @@ import json
 import unittest
 from pathlib import Path
 
+from stellasora_toolkit.account_guard import AccountSafetyError
 from stellasora_toolkit.service import LEGACY_ARCHIVE_FILENAME, _load_archive, _write_archive, archive_path_for_uid, load_latest_snapshot
 
 
@@ -21,12 +22,23 @@ class ServiceTests(unittest.TestCase):
     def test_second_account_never_inherits_legacy_history(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / LEGACY_ARCHIVE_FILENAME).write_text(json.dumps({"categories": {"1": [{"Gid": 10, "Time": 1, "Ids": [1]}]}}))
+            (root / LEGACY_ARCHIVE_FILENAME).write_text(json.dumps({"uid": "123456789", "categories": {"1": [{"Gid": 10, "Time": 1, "Ids": [1]}]}}))
             first = _load_archive(root, "123456789")
             self.assertEqual(len(first[1]), 1)
             _write_archive(root, "123456789", first)
             self.assertEqual(_load_archive(root, "987654321"), {})
             self.assertTrue((root / LEGACY_ARCHIVE_FILENAME).exists())
+
+    def test_unowned_legacy_history_is_not_assigned_to_current_uid(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            legacy = root / LEGACY_ARCHIVE_FILENAME
+            legacy.write_text(json.dumps({"categories": {"1": [{"Gid": 10, "Time": 1, "Ids": [1]}]}}))
+            original = legacy.read_bytes()
+            with self.assertRaises(AccountSafetyError):
+                _load_archive(root, "123456789")
+            self.assertEqual(legacy.read_bytes(), original)
+            self.assertFalse((root / "123456789.json").exists())
 
     def test_corrupt_archive_is_not_overwritten_or_replaced_with_legacy(self):
         with tempfile.TemporaryDirectory() as directory:

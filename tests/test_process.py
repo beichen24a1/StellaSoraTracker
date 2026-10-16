@@ -108,3 +108,63 @@ class ProcessEnumerationTests(unittest.TestCase):
         with patch.object(process, "kernel32", api):
             self.assertEqual(process._process_image_path(10), "")
         api.CloseHandle.assert_called_once_with(99)
+
+
+class ProcessIdentityTests(unittest.TestCase):
+    def test_creation_time_uses_open_handle_and_preserves_all_64_bits(self):
+        api = Mock()
+        api.OpenProcess.return_value = 99
+
+        def get_times(handle, creation, _exit_time, _kernel_time, _user_time):
+            self.assertEqual(handle, 99)
+            creation._obj.dwHighDateTime = 0x89ABCDEF
+            creation._obj.dwLowDateTime = 0xFEDCBA98
+            return True
+
+        api.GetProcessTimes.side_effect = get_times
+        with patch.object(process, "kernel32", api):
+            with process.RemoteProcess(10) as remote:
+                self.assertEqual(remote.get_creation_time(), 0x89ABCDEFFEDCBA98)
+        api.OpenProcess.assert_called_once_with(
+            process.PROCESS_QUERY_INFORMATION | process.PROCESS_VM_READ, False, 10
+        )
+        api.GetProcessTimes.assert_called_once()
+        api.CloseHandle.assert_called_once_with(99)
+
+    def test_reused_pid_has_different_creation_times(self):
+        api = Mock()
+        api.OpenProcess.side_effect = [99, 100]
+
+        def get_times(handle, creation, _exit_time, _kernel_time, _user_time):
+            creation._obj.dwHighDateTime = 1
+            creation._obj.dwLowDateTime = handle
+            return True
+
+        api.GetProcessTimes.side_effect = get_times
+        with patch.object(process, "kernel32", api):
+            with process.RemoteProcess(10) as first:
+                first_identity = (first.pid, first.get_creation_time())
+            with process.RemoteProcess(10) as second:
+                second_identity = (second.pid, second.get_creation_time())
+        self.assertNotEqual(first_identity, second_identity)
+
+    def test_creation_time_failure_is_actionable_and_closes_handle(self):
+        api = Mock()
+        api.OpenProcess.return_value = 99
+        api.GetProcessTimes.return_value = False
+        with patch.object(process, "kernel32", api), patch.object(ctypes, "get_last_error", return_value=5):
+            with self.assertRaisesRegex(OSError, "启动时间.*重新启动游戏") as error:
+                with process.RemoteProcess(10) as remote:
+                    remote.get_creation_time()
+        self.assertEqual(error.exception.errno, 5)
+        api.CloseHandle.assert_called_once_with(99)
+
+    def test_creation_time_of_closed_handle_is_rejected(self):
+        api = Mock()
+        api.OpenProcess.return_value = 99
+        with patch.object(process, "kernel32", api):
+            remote = process.RemoteProcess(10)
+            remote.close()
+            with self.assertRaisesRegex(RuntimeError, "句柄已关闭"):
+                remote.get_creation_time()
+        api.GetProcessTimes.assert_not_called()

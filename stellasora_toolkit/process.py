@@ -84,6 +84,14 @@ kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 kernel32.CloseHandle.restype = wintypes.BOOL
 kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
 kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+kernel32.GetProcessTimes.argtypes = [
+    wintypes.HANDLE,
+    ctypes.POINTER(wintypes.FILETIME),
+    ctypes.POINTER(wintypes.FILETIME),
+    ctypes.POINTER(wintypes.FILETIME),
+    ctypes.POINTER(wintypes.FILETIME),
+]
+kernel32.GetProcessTimes.restype = wintypes.BOOL
 
 
 @dataclass(frozen=True)
@@ -189,6 +197,27 @@ class RemoteProcess:
 
     def __exit__(self, *_args: object) -> None:
         self.close()
+
+    def get_creation_time(self) -> int:
+        """Return the opened process's creation time as a raw Windows FILETIME."""
+        if not self.handle:
+            raise RuntimeError("游戏进程句柄已关闭，请重新选择客户端后重试")
+        creation = wintypes.FILETIME()
+        exit_time = wintypes.FILETIME()
+        kernel_time = wintypes.FILETIME()
+        user_time = wintypes.FILETIME()
+        if not kernel32.GetProcessTimes(
+            self.handle,
+            ctypes.byref(creation),
+            ctypes.byref(exit_time),
+            ctypes.byref(kernel_time),
+            ctypes.byref(user_time),
+        ):
+            raise OSError(
+                ctypes.get_last_error(),
+                f"无法读取游戏进程 PID {self.pid} 的启动时间，请重新启动游戏后重试",
+            )
+        return (int(creation.dwHighDateTime) << 32) | int(creation.dwLowDateTime)
 
     def regions(self) -> list[MemoryRegion]:
         if self._regions is not None:

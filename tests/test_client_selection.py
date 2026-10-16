@@ -86,9 +86,10 @@ class SelectedProcessServiceTests(unittest.TestCase):
             self.assertEqual(len(list(root.iterdir())), 1)
 
     def test_different_prefix_uids_remain_separate_without_region_fields(self):
-        with tempfile.TemporaryDirectory() as directory, patch.object(service, "find_process_id", return_value=20), patch.object(service, "RemoteProcess"), patch.object(service, "LuaTableDiscovery") as discovery, patch.object(service, "read_game_uid_from_process") as read_uid:
+        with tempfile.TemporaryDirectory() as directory, patch.object(service, "find_process_id", return_value=20), patch.object(service, "RemoteProcess") as process, patch.object(service, "LuaTableDiscovery") as discovery, patch.object(service, "read_game_uid_from_process") as read_uid:
             root = Path(directory)
             for uid in ("100000001", "300000001", "900000001"):
+                process.return_value.__enter__.return_value.get_creation_time.return_value = int(uid)
                 read_uid.return_value = uid
                 discovery.return_value.read_target_field.return_value = {}
                 snapshot = service.extract_snapshot(root, "StellaSora.exe", process_id=20)

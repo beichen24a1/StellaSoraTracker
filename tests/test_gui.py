@@ -1,12 +1,31 @@
+import queue
 import unittest
 from unittest.mock import Mock, patch
 
 from stellasora_toolkit.gacha_stats import FiveStarPull, PoolStats
 from stellasora_toolkit.gui import StellaSoraApp
 from stellasora_toolkit.upload import UploadResult
+from stellasora_toolkit.account_guard import AccountSafetyError
 
 
 class GuiTests(unittest.TestCase):
+    def test_account_protection_keeps_previous_view_and_cleans_up_busy_state(self):
+        app = StellaSoraApp.__new__(StellaSoraApp)
+        app.root = Mock()
+        app.status_var = Mock()
+        app._finish_busy = Mock()
+        app._apply_snapshot = Mock()
+        app.snapshot = previous_snapshot = Mock()
+        app.events = queue.Queue()
+        app.events.put(("error", AccountSafetyError("account changed")))
+        with patch("stellasora_toolkit.gui.messagebox.showwarning") as warning:
+            app._poll_events()
+        app._finish_busy.assert_called_once()
+        app._apply_snapshot.assert_not_called()
+        self.assertIs(app.snapshot, previous_snapshot)
+        warning.assert_called_once()
+        self.assertIn("上次本地记录", warning.call_args.args[1])
+
     def test_binding_popup_only_depends_on_local_first_success(self):
         app = StellaSoraApp.__new__(StellaSoraApp)
         app.root = Mock()

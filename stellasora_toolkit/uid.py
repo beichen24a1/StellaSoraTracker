@@ -38,6 +38,10 @@ def read_game_uid(process_name: str | None = None, *, process_id: int | None = N
         return read_game_uid_from_process(process)
 
 
+class AmbiguousUidError(LookupError):
+    pass
+
+
 def read_game_uid_from_process(process: RemoteProcess) -> str:
     candidates: list[str] = []
     for address in process.scan(UID_PREFIX_UTF16):
@@ -55,5 +59,5 @@ def read_game_uid_from_process(process: RemoteProcess) -> str:
         raise LookupError("未找到游戏 UID，请确认已登录游戏并进入主界面或个人资料页")
     unique = set(candidates)
     if len(unique) != 1:
-        raise LookupError("检测到多个 UID，可能存在切换账号后的缓存。请重新启动游戏后再读取，避免归档混入其他账号")
+        raise AmbiguousUidError("检测到多个 UID，可能存在切换账号后的缓存。请重新启动游戏后再读取，避免归档混入其他账号")
     return unique.pop()
