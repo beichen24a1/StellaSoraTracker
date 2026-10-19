@@ -1,6 +1,6 @@
 {
-  "version": "1.2.26",
-  "url": "https://github.com/sfjdk/StellaSoraTracker/releases/download/v1.2.26/StellaSoraGachaTool-1.2.26-win64.zip",
-  "sha256": "509d2de2b8ef8764c37ae08f02634f4bc196f0167d73edc5247a5c974b57f0a5",
-  "notes": "三套界面主题均采用左侧导航；设置页切换主题并自动记忆；主操作改为抓取抽卡记录；整合多账号、UID 分享、三服识别、导入导出与备份功能；修复发行构建及更新配置。"
+  "version": "1.2.31",
+  "url": "https://github.com/sfjdk/StellaSoraTracker/releases/download/v1.2.31/StellaSoraGachaTool-1.2.31-win64.zip",
+  "sha256": "ec3e9ca1a6c20fe0bfd250d546b40b0de7039ad9a001f11563d11474b8b86824",
+  "notes": "「手动上传」改为只用系统浏览器打开(内置网页移除), 因此不再内嵌 Chromium, 安装包体积回到约 100MB。上传到蕾姆: 修复 SSL UNEXPECTED_EOF_WHILE_READING —— 该域名目前没有 A 记录(服务器下线/换地址), 客户端会依次尝试 HTTPS → 兼容旧 TLS 的 HTTPS → 明文 HTTP, 全部失败时体检并说明是域名解析不到/端口不通/握手失败; 上传页新增可编辑且会记住的「上传地址」。"
 }

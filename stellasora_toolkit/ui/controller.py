@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import accounts, server_config
-from .. import account_config, server_upload
+from .. import rem_upload
 from ..app_updater import (
     check_for_update, download_update, launch_update_installer, update_urls,
 )
@@ -28,7 +28,8 @@ from ..gacha_stats import build_category_stat, build_banner_stats_with_shared_pi
 from ..official_banners import cache_filename, load_banners, refresh_from_network, set_active_banners
 from ..service import (
     detect_and_apply, effective_uid, extract_snapshot, import_gacha_file,
-    load_archive_uid, load_latest_snapshot, load_manual_uid, export_share_for_uid,
+    load_archive_uid, load_archive_categories, load_latest_snapshot,
+    load_manual_uid, export_share_for_uid,
     normalize_uid, probe_running_groups, read_game_uid,
     refresh_share_file, save_manual_uid, merge_accounts,
     ARCHIVE_FILENAME, Snapshot,
@@ -115,18 +116,15 @@ class StellaSoraWindow(QMainWindow):
             "account_remove": self._remove_account,
         })
         self._account = AccountView({
-            "save_url": self._account_save_url,
-            "login": self._account_login,
-            "register": self._account_register,
-            "logout": self._account_logout,
-            "upload": self._account_upload,
-            "open_site": self._account_open_site,
+            "upload": self._rem_upload,
+            "copy_bind": self._rem_copy_bind,
+            "open_manual": self._open_manual_upload,
         })
         self._help = HelpView()
         self._tabs.addTab(self._home, "首页")
         self._tabs.addTab(self._records, "招募记录")
         self._tabs.addTab(self._settings, "设置")
-        self._tabs.addTab(self._account, "账户")
+        self._tabs.addTab(self._account, "上传")
         self._tabs.addTab(self._help, "使用说明")
         root_lay.addWidget(self._tabs, 1)
 
@@ -198,18 +196,51 @@ class StellaSoraWindow(QMainWindow):
         profile = server_config.active()
         return f"四类卡池与五星记录 · {profile.label}（{profile.client_names[0]}）"
 
+    @staticmethod
+    def _alive(widget) -> bool:
+        """这个 Qt 控件还活着吗(包装对象还在, C++ 对象没被删)?
+
+        界面会被重建(换主题、重建外壳), 旧控件 deleteLater() 之后 Python 这边
+        的引用还在, 再 setText 就会抛
+        "RuntimeError: libshiboken: Internal C++ object (QLabel) already deleted"。
+        所有"可能比控件活得更久"的更新(后台线程回来的信号、定时器、主题切换)都要先问一句。
+        """
+        if widget is None:
+            return False
+        try:
+            import shiboken6
+        except ImportError:                                  # 非 PySide6 环境
+            return True
+        try:
+            return bool(shiboken6.isValid(widget))
+        except (RuntimeError, ReferenceError):
+            return False
+
+    @classmethod
+    def _set_text(cls, widget, text: str) -> bool:
+        """活着才 setText; 返回是否真的设置成功。"""
+        if not cls._alive(widget):
+            return False
+        try:
+            widget.setText(text)
+        except RuntimeError:
+            return False
+        return True
+
     def _refresh_server_labels(self) -> None:
         """让标题/副标题/设置页单选按钮跟随当前生效版本(自动检测可能切换了版本)。"""
         self._profile = server_config.active()
+        if not self._alive(self):
+            return
         self.setWindowTitle(f"星塔旅人数据工具 · {self._profile.label}")
-        if hasattr(self, "_sub"):
-            self._sub.setText(self._subtitle_text())
-        if hasattr(self, "_settings"):
-            self._settings.refresh_server_buttons()
+        self._set_text(getattr(self, "_sub", None), self._subtitle_text())
+        settings = getattr(self, "_settings", None)
+        if self._alive(settings):
+            settings.refresh_server_buttons()
             manual = server_config.load_manual(server_config.config_path(self._output_dir))
             source = "手动指定" if manual else "自动识别"
             hint = "点「自动识别」可交回自动判断" if manual else "刷新时按内存文本自动判断"
-            self._settings.set_server_state(
+            settings.set_server_state(
                 f"当前生效: {self._profile.label}（{source}）· 名称语言 "
                 f"{self._profile.api_lang} · {hint}")
 
@@ -299,7 +330,8 @@ class StellaSoraWindow(QMainWindow):
 
     def _hbtn(self, txt, role, fn) -> QPushButton:
         b = QPushButton(txt); b.setProperty("role", role)
-        b.setCursor(Qt.PointingHandCursor); b.clicked.connect(fn)
+        b.setCursor(Qt.PointingHandCursor)
+        b.clicked.connect(fn)
         return b
 
     # ---------------- 指标 ----------------
@@ -415,177 +447,137 @@ class StellaSoraWindow(QMainWindow):
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
-        self._btn_refresh.setEnabled(not busy)
-        self._progress.setVisible(busy)
+        button = getattr(self, "_btn_refresh", None)
+        if self._alive(button):
+            try:
+                button.setEnabled(not busy)
+            except RuntimeError:
+                pass
+        progress = getattr(self, "_progress", None)
+        if self._alive(progress):
+            try:
+                progress.setVisible(busy)
+            except RuntimeError:
+                pass
 
-    # ---------------- 账户 / 上传 ----------------
-    # 所有网络操作都在后台线程里跑, 结果经 _bridge.account 回主线程。
-    # 在 GUI 线程里直接 urlopen 会让窗口假死几秒 —— 用户会以为程序卡了。
+    # ---------------- 上传到蕾姆 ----------------
+    # 上传在后台线程里跑, 结果经 _bridge.account 回主线程 —— 在 GUI 线程里
+    # urlopen 会让窗口假死几秒。
 
-    def _archive_summary(self) -> str:
-        """本地归档的一句话摘要, 显示在账户页上。"""
+    def _archive_summary(self) -> tuple[str, int, int]:
+        """当前账号的 (uid, 组数, 抽数)。"""
+        uid = load_archive_uid(self._output_dir) or load_manual_uid(self._output_dir)
         try:
-            categories = server_upload.read_archive(self._output_dir)
-        except server_upload.UploadError as err:
-            return err.message
-        groups = pulls = 0
+            categories = load_archive_categories(self._output_dir)
+        except (OSError, ValueError):
+            return uid, 0, 0
+        groups = sum(len(v) for v in categories.values() if isinstance(v, list))
+        pulls = 0
         for items in categories.values():
             if not isinstance(items, list):
                 continue
-            groups += len(items)
             for group in items:
                 pulls += len(table_values(group.get("Ids")))
-        uid = load_archive_uid(self._output_dir) or load_manual_uid(self._output_dir)
-        return f"本地归档：{pulls} 抽 / {groups} 组记录" + (f" · UID {uid}" if uid else "")
+        return uid, groups, pulls
 
     def _refresh_account_view(self, note: str = "") -> None:
-        account = account_config.load(self._output_dir)
-        self._account.set_state(account, self._archive_summary())
-        self._account.set_status(note or (
-            f"已登录：{account.username}" if account and account.logged_in
-            else "尚未登录。填好服务器地址后用网页版注册的账号登录。"))
+        uid, groups, pulls = self._archive_summary()
+        view = getattr(self, "_account", None)
+        if not self._alive(view):
+            return
+        view.set_upload_state(uid, groups, pulls, note)
+        # 用户可能改过上传地址(服务器换域名时), 启动/切账号时回填
+        try:
+            view.set_upload_endpoint(rem_upload.load_endpoint(self._output_dir))
+        except (OSError, ValueError):
+            pass
 
     def _account_note(self, text: str) -> None:
-        self._account.set_status(text)
+        view = getattr(self, "_account", None)
+        if self._alive(view):
+            view.set_status(text)
 
-    def _account_save_url(self, url: str) -> None:
-        normalized = account_config.split_share_url(url)
-        if not normalized:
-            self._account_note("请先填写服务器地址")
+    def _rem_upload(self) -> None:
+        """上传当前账号的 <UID>.json 到蕾姆。"""
+        if self._busy:
             return
-        previous = account_config.load(self._output_dir) or account_config.Account()
-        ok = account_config.save(self._output_dir, account_config.Account(
-            server_url=normalized, token=previous.token, username=previous.username))
-        self._refresh_account_view(
-            f"服务器地址已保存：{normalized}" if ok else "保存失败：配置目录不可写")
-
-    def _account_login(self, url: str, username: str, password: str) -> None:
-        target = account_config.split_share_url(url)
-        if not (target and username.strip() and password):
-            self._account_note("请填好服务器地址、用户名和密码")
+        if getattr(self, "demo", False):
+            self._account_note("演示模式不会上传。切到本地后再试。")
             return
-        self._account.set_busy(True)
-        self._account_note("正在登录…")
+        try:
+            path = export_share_for_uid(self._output_dir)   # 顺带保证 <uid>.json 是最新的
+        except ValueError as err:
+            self._account_note(f"无法上传：{err}")
+            return
+        view = getattr(self, "_account", None)
+        endpoint = ""
+        if self._alive(view):
+            endpoint = view.upload_endpoint()
+        endpoint = endpoint or rem_upload.load_endpoint(self._output_dir)
+        rem_upload.save_endpoint(self._output_dir, endpoint)
+        self._account_note(f"正在上传 {path.name} 到 {endpoint} …")
+        self._set_busy(True)
 
         def work() -> None:
             try:
-                result = server_upload.login(target, username.strip(), password)
-            except Exception as err:                    # noqa: BLE001
-                self._bridge.account.emit("login", err)
-                return
-            self._bridge.account.emit("login", (target, result))
+                result = rem_upload.upload_file(path, endpoint=endpoint)
+                try:
+                    first = rem_upload.mark_uploaded(path.parent, result.uid)
+                    state_error = ""
+                except (OSError, ValueError) as err:
+                    first, state_error = True, str(err)
+                self._bridge.account.emit("rem_upload", (result, first, state_error))
+            except Exception as err:                        # noqa: BLE001
+                self._bridge.account.emit("rem_upload", err)
 
-        threading.Thread(target=work, daemon=True).start()
+        threading.Thread(target=work, name="stellasora-rem-upload", daemon=True).start()
 
-    def _account_register(self, url: str, username: str, password: str) -> None:
-        target = account_config.split_share_url(url)
-        if not (target and username.strip() and password):
-            self._account_note("请填好服务器地址、用户名和密码")
+    def _rem_copy_bind(self) -> None:
+        uid, _groups, _pulls = self._archive_summary()
+        if not uid:
+            self._account_note("还没有 UID，先读取/填写 UID 再复制绑定指令。")
             return
-        self._account.set_busy(True)
-        self._account_note("正在注册…")
+        command = rem_upload.bind_command_for(uid)
+        QGuiApplication.clipboard().setText(command)
+        self._account_note(f"绑定指令已复制：{command}（发给蕾姆即可）")
 
-        def work() -> None:
-            try:
-                server_upload.register(target, username.strip(), password)
-            except Exception as err:                    # noqa: BLE001
-                self._bridge.account.emit("register", err)
-                return
-            self._bridge.account.emit("register", {"username": username.strip()})
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def _account_logout(self) -> None:
-        account = account_config.load(self._output_dir)
-        if account is None:
-            self._refresh_account_view("本来就没有登录")
-            return
-        # 先清本地再通知服务端 —— 服务端连不上时本地也要能退出
-        account_config.save(self._output_dir, account_config.Account(
-            server_url=account.server_url))
-        self._account.clear_password()
-        self._refresh_account_view("已退出登录")
-
-        def work() -> None:
-            server_upload.logout(account.server_url, account.token)
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def _account_upload(self, mode: str = "merge") -> None:
-        account = account_config.load(self._output_dir)
-        if account is None:
-            self._account_note("请先登录")
-            return
-        self._account.set_busy(True)
-        self._account_note("正在读取本地归档…")
-
-        def work() -> None:
-            try:
-                # 传【归档】而不是本次读取的快照: 归档是与历史合并后的
-                # 完整数据, 快照只有这次读到的部分
-                categories = server_upload.read_archive(self._output_dir)
-                self._bridge.progress.emit("正在上传抽卡记录…")
-                result = server_upload.upload(account.server_url, account.token,
-                                              categories, mode=mode)
-            except Exception as err:                    # noqa: BLE001
-                self._bridge.account.emit("upload", err)
-                return
-            self._bridge.account.emit("upload", result)
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def _account_open_site(self) -> None:
-        account = account_config.load(self._output_dir)
-        url = account.server_url if account and account.server_url else ""
-        if not url:
-            self._account_note("请先填写并保存服务器地址")
-            return
-        QGuiApplication.clipboard().setText(url)
+    def _open_manual_upload(self) -> None:
+        """用系统浏览器打开手动上传网页。"""
+        from ..ui.views import MANUAL_UPLOAD_URL
         try:
             if sys.platform == "win32":
-                os.startfile(url)                       # noqa: S606
+                os.startfile(MANUAL_UPLOAD_URL)             # noqa: S606
             else:
-                subprocess.Popen(["xdg-open", url])
-            self._account_note(f"已在浏览器中打开 {url}（地址也复制到了剪贴板）")
+                subprocess.Popen(["xdg-open", MANUAL_UPLOAD_URL])
+            self._account_note("已在浏览器中打开手动上传页（地址也复制到了剪贴板）")
         except OSError as err:
             self._account_note(f"打不开浏览器：{err}。地址已复制到剪贴板。")
+        QGuiApplication.clipboard().setText(MANUAL_UPLOAD_URL)
 
     def _on_account_result(self, action: str, payload) -> None:
-        """账户操作的异步结果 —— 已在主线程。"""
-        self._account.set_busy(False)
+        """上传的异步结果 —— 已在主线程。"""
+        view = getattr(self, "_account", None)
+        if self._alive(view):
+            view.set_busy(False)
+        self._set_busy(False)
+        if action != "rem_upload":
+            return
         if isinstance(payload, Exception):
             message = getattr(payload, "message", None) or str(payload)
-            self._account_note(f"失败：{message}")
-            # 凭据失效: 清掉 token 回到登录界面, 但保留服务器地址
-            if (isinstance(payload, server_upload.UploadError)
-                    and payload.is_auth_error):
-                stale = account_config.load(self._output_dir)
-                if stale is not None:
-                    account_config.save(self._output_dir, account_config.Account(
-                        server_url=stale.server_url))
-                    self._refresh_account_view("登录已失效，请重新登录")
+            self._account_note(f"上传失败：{message}")
+            self._status.setText("上传失败（详情见「上传与分享」页）")
             return
-
-        if action == "login":
-            url, result = payload
-            account_config.save(self._output_dir, account_config.Account(
-                server_url=url, token=result["token"],
-                username=str(result.get("username") or "")))
-            self._account.clear_password()
-            self._refresh_account_view(f"已登录：{result.get('username', '')}")
-        elif action == "register":
-            self._account.clear_password()
-            self._account_note("注册成功，现在可以直接登录了。")
-        elif action == "upload":
-            added = int(payload.get("added") or 0)
-            unknown = int(payload.get("unknown") or 0)
-            note = (f"上传完成：新增 {added} 组，服务器现有 "
-                    f"{payload.get('pulls', 0)} 抽 / {payload.get('groups', 0)} 组记录。")
-            if unknown:
-                note += f"\n检测到 {unknown} 个尚未登记的新物品，正在后台补名称和头像。"
-            self._refresh_account_view(note)
-        else:
-            self._refresh_account_view()
+        result, first, state_error = payload
+        note = f"已上传 {result.uid}（HTTP {result.status_code}），数据已暂存到蕾姆。"
+        if first:
+            command = result.bind_command
+            note += f"\n绑定指令：{command}（发给蕾姆后正式更新）"
+            QGuiApplication.clipboard().setText(command)
+            note += "\n指令已复制到剪贴板。"
+        if state_error:
+            note += f"\n（首次提示状态没写成功：{state_error}，下次还会再提示）"
+        self._account_note(note)
+        self._status.setText(f"上传成功：UID {result.uid}")
 
     def _on_snapshot(self, snap) -> None:
         self._apply_snapshot(snap)
@@ -802,12 +794,24 @@ class StellaSoraWindow(QMainWindow):
         self._status.setText(f"已按 {self._profile.label} 更新名称与卡池{extra}")
 
     def _set_metrics(self, st: Stats) -> None:
-        self._m["累计抽取"].set_value(str(st.total_pulls))
-        self._m["五星记录"].set_value(str(st.total_five))
-        self._m["五星概率"].set_value(st.rate)
-        self._m["平均五星抽数"].set_value(st.average)
-        self._m["已加载分类"].set_value(f"{st.loaded}/4")
-        self._m["归档批次"].set_value(str(st.batches))
+        """指标磁贴: 新的外壳里可能没有(已换成 HomeView 自绘), 所以只更新活着的那些。"""
+        values = {
+            "累计抽取": str(st.total_pulls),
+            "五星记录": str(st.total_five),
+            "五星概率": st.rate,
+            "平均五星抽数": st.average,
+            "已加载分类": f"{st.loaded}/4",
+            "归档批次": str(st.batches),
+        }
+        tiles = getattr(self, "_m", None) or {}
+        for name, value in values.items():
+            tile = tiles.get(name)
+            if tile is None or not self._alive(tile):
+                continue
+            try:
+                tile.set_value(value)
+            except RuntimeError:
+                continue
 
     def _check_update(self) -> None:
         from ..app_updater import AppUpdate  # noqa
@@ -818,8 +822,8 @@ class StellaSoraWindow(QMainWindow):
         if not manifest_urls:
             QMessageBox.information(
                 self, "检查更新",
-                "未配置更新源。\n\n请设置环境变量 STELLASORA_UPDATE_MANIFEST_GITHUB"
-                " 指向更新清单地址后重试。",
+                "没有可用的更新清单地址。\n\n默认读取 GitHub 仓库 main 分支的 "
+                "app_update.json；也可以用环境变量 STELLASORA_UPDATE_MANIFEST_GITHUB 覆盖。",
             )
             return
         self._status.setText("正在检查软件更新")

@@ -14,20 +14,20 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 
-# 更新渠道只有 GitHub 一个。
-# 清单地址不写死在代码里, 由环境变量提供:
+# 更新渠道只有 GitHub 一个(不接 Gitee)。
+# 清单默认从本仓库 main 分支的 app_update.json 读, 环境变量可覆盖(测试/镜像用):
 #   STELLASORA_UPDATE_MANIFEST_GITHUB : 更新清单完整 URL
-# 未配置时更新检查视为"未配置", 直接提示而不会去请求任何地址。
 UPDATE_MANIFEST_ENV_VAR = "STELLASORA_UPDATE_MANIFEST_GITHUB"
+DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/sfjdk/StellaSoraTracker/main/app_update.json"
 
 
 def update_urls() -> list[str]:
-    """返回更新清单地址; 未配置时返回空列表。"""
+    """返回更新清单地址: 环境变量优先, 否则用仓库里那份 app_update.json。"""
     url = os.environ.get(UPDATE_MANIFEST_ENV_VAR, "").strip()
-    return [url] if url else []
+    return [url or DEFAULT_MANIFEST_URL]
 
 
-UPDATE_MANIFEST_URL = next(iter(update_urls()), "")
+UPDATE_MANIFEST_URL = next(iter(update_urls()), DEFAULT_MANIFEST_URL)
 
 APP_EXE_NAME = "StellaSoraGachaTool.exe"
 UPDATER_EXE_NAME = "StellaSoraUpdater.exe"

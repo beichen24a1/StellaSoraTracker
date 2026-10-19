@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from PySide6.QtWidgets import QApplication, QMessageBox
-from stellasora_toolkit import accounts, server_config, account_config, service
+from stellasora_toolkit import accounts, rem_upload, server_config, service
 from stellasora_toolkit.account_uid import UidSearch
 from stellasora_toolkit.official_banners import set_active_banners
 from stellasora_toolkit.ui.window import StellaSoraApp
@@ -47,7 +47,7 @@ class FeatureParityTests(unittest.TestCase):
         for key in ('account_switch','account_new','account_rename','account_merge','account_remove',
                     'save_uid','read_uid','share','server_changed','server_auto'):
             self.assertTrue(callable(callbacks[key]),key)
-        for key in ('save_url','login','register','logout','upload','open_site'):
+        for key in ('upload','copy_bind','open_manual'):
             self.assertTrue(callable(self.window._account._cb[key]),key)
         self.assertEqual(self.window.stack.count(),5)
         self.assertEqual(set(self.window.settings._server_buttons),{'cn','intl','jp'})
@@ -75,19 +75,21 @@ class FeatureParityTests(unittest.TestCase):
         self.assertEqual(share['uid'],'100000001')
         self.assertEqual(share['categories']['1'][0]['Ids'],[157])
 
-    def test_theme_preserves_unsaved_uid_and_web_login_fields(self):
+    def test_theme_preserves_unsaved_uid_and_upload_page_state(self):
+        """换主题会重建外壳: 设置页里没保存的 UID 输入、上传页的状态都得留住。"""
         self.window.navigate(2)
         self.window.settings._uid.setText('100000123')
-        self.window._account._url.setText('https://example.com')
-        self.window._account._username.setText('preview-user')
-        self.window._account._password.setText('not-a-real-password')
+        self.window._account.set_upload_state('100000001',3,40,'正在上传…')
         for theme in ('sky','journal','orbit'):
             self.window.theme_buttons[theme].click()
             self.app.processEvents()
             self.assertEqual(self.window.settings._uid.text(),'100000123')
-            self.assertEqual(self.window._account._url.text(),'https://example.com')
-            self.assertEqual(self.window._account._password.text(),'not-a-real-password')
             self.assertEqual(self.window.stack.currentIndex(),2)
+        # 上传页是同一个实例(只是被重新挂到新堆栈里): 控件没被销毁, 状态由
+        # render() 按真实归档重新算(空归档就显示"还没有记录"), 不会留下死控件
+        self.assertIs(self.window._account,self.window.stack.widget(3))
+        self.window._account.set_upload_state('100000001',3,40,'正在上传…')
+        self.assertIn('100000001',self.window._account._who.text())
 
     def test_three_server_setting_and_auto_mode_are_saved(self):
         for key in ('cn','intl','jp'):
@@ -116,12 +118,15 @@ class FeatureParityTests(unittest.TestCase):
         self.assertEqual(self.window.snapshot.pull_count,2)
         self.assertEqual(self.window.snapshot.uid,'100000001')
 
-    def test_saved_web_account_is_reflected_in_restored_account_page(self):
-        account_config.save(self.root,account_config.Account(server_url='https://example.com',token='test-token',username='preview-user'))
+    def test_upload_page_shows_uid_and_record_summary(self):
+        """旧的"服务器/登录注册"表单已经去掉, 上传页只显示 UID + 记录摘要。"""
+        self.import_uid('100000001',157)
         self.window._refresh_account_view()
-        self.assertIn('preview-user',self.window._account._who.text())
+        self.assertIn('100000001',self.window._account._who.text())
+        self.assertIn('抽',self.window._account._archive.text())
         self.window.navigate(3)
-        self.assertFalse(self.window._account._account_card.isHidden())
+        self.assertFalse(self.window._account._upload_btn.isHidden())
+        self.assertFalse(hasattr(self.window._account,'_login_card'),'登录表单应当已被删除')
 
     def test_refresh_verifies_game_uid_even_when_current_uid_is_known(self):
         self.import_uid('100000001',157)

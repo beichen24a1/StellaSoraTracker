@@ -267,8 +267,11 @@ class SettingsView(QWidget):
         current = server_config.active()
         self._server_buttons: dict[str, QPushButton] = {}
         for _key, prof in server_config.PROFILES.items():
+            # ⚠ clicked 信号带一个 checked(bool): 形参必须先把它吃掉, 否则 k 收到的是
+            # True/False, set_active(True) 直接失败 —— 表现就是"点了选不动、又弹回默认"。
             b = self._btn(f"{prof.label} · {prof.client_names[0]}", "choice",
-                          lambda k=_key: self._cb.get("server_changed", lambda _: None)(k))
+                          lambda _checked=False, k=_key:
+                          self._cb.get("server_changed", lambda _: None)(k))
             b.setCheckable(True)
             b.setChecked(_key == current.key)
             group.addButton(b)
@@ -412,25 +415,23 @@ class SettingsView(QWidget):
 
     def _btn(self, txt, role, fn) -> QPushButton:
         b = QPushButton(txt); b.setProperty("role", role)
-        b.setCursor(Qt.PointingHandCursor); b.clicked.connect(fn)
+        b.setCursor(Qt.PointingHandCursor)
+        # 注意: clicked 会带一个 checked(bool)。回调若写成 `lambda k=默认值:` 想用默认值,
+        # 这个 bool 会把它顶掉(版本按钮的老 bug)。要带参数请写成 `lambda _checked=False, k=...:`。
+        b.clicked.connect(fn)
         return b
 
 
-class AccountView(QWidget):
-    """账户页: 连服务器 / 登录注册 / 上传归档 / 退出。
+MANUAL_UPLOAD_URL = "https://share.fnnas.net/s/8b355174d383436899"
 
-    与 SettingsView 的一个关键差异: 那边每次 build() 都 clear_layout 重建
-    (内容全是只读展示), 这里有一堆输入框 —— 重建会把用户正打到一半的内容
-    抹掉。所以布局只在 __init__ 建一次, 状态变化走 set_state() 只改标签
-    与可见性。
+
+class AccountView(QWidget):
+    """上传与分享页: 上传到蕾姆 + 内嵌手动上传网页。
 
     回调字典:
-        save_url(url)                        保存服务器地址
-        login(url, username, password)       登录
-        register(url, username, pw)          注册
-        logout()                             退出登录
-        upload(mode)                         上传归档
-        open_site()                          用浏览器打开网页版
+        upload()          上传当前账号的 <UID>.json
+        copy_bind()       复制绑定指令
+        open_manual()     用系统浏览器打开手动上传页
     """
 
     def __init__(self, callbacks: dict, parent=None):
@@ -441,138 +442,99 @@ class AccountView(QWidget):
         col.setContentsMargins(24, 20, 24, 24); col.setSpacing(16)
         outer.addWidget(_scroll(wrap))
 
-        col.addWidget(mk_label("账户", role="h1"))
+        col.addWidget(mk_label("上传与分享", role="h1"))
         col.addWidget(mk_label(
-            "把抽卡记录上传到网页版, 之后在任何设备上打开浏览器都能查看。\n"
-            "读取游戏内存只能在这台电脑上做, 网页端是只读的展示页。",
+            "把当前账号的抽卡记录上传到蕾姆（Rem）。上传只发送 <UID>.json 里的内容："
+            "游戏 UID 与抽卡结果，不含 Cookie、密码或登录信息。",
             role="muted"))
 
-        # ---- 服务器地址 ----
+        # ---- 上传到蕾姆 ----
         c0 = Card()
-        c0.add(mk_label("服务器地址", role="h2"))
+        c0.add(mk_label("上传抽卡记录到蕾姆", role="h2"))
+        self._who = mk_label("", role="body")
+        c0.add(self._who)
+        self._archive = mk_label("", role="muted")
+        c0.add(self._archive)
+        from ..rem_upload import UPLOAD_URL as _DEFAULT_ENDPOINT
+        self._endpoint = QLineEdit(_DEFAULT_ENDPOINT)
+        self._endpoint.setPlaceholderText("上传地址")
+        c0.add(self._endpoint)
         c0.add(mk_label(
-            "填网页版的访问地址, 例如 https://你的域名。"
-            "也可以直接粘贴别人给你的分享链接, 会自动取其中的站点地址。",
+            "上传地址默认就是蕾姆的接口；如果对方换了域名，把新地址填在这里即可（会记住）。",
+            role="mutedSmall"))
+        row = QHBoxLayout(); row.setSpacing(8)
+        self._upload_btn = self._btn("上传抽卡记录", "primary", self._on_upload)
+        row.addWidget(self._upload_btn)
+        row.addWidget(self._btn("复制绑定指令", "ghost", lambda: self._cb["copy_bind"]()))
+        row.addStretch(1)
+        c0.add(_hbox(row))
+        c0.add(mk_label(
+            "上传只是把归档暂存到服务器：首次上传成功后，把「星塔抽卡绑定 UID …」"
+            "这条指令发给蕾姆才算正式更新（右下角或下面的网页里都能发）。\n"
+            "同一 UID 只会提示一次，之后每次上传仍需发一次指令确认更新。",
             role="muted"))
-        self._url = QLineEdit(); self._url.setPlaceholderText("https://你的域名")
-        c0.add(self._url)
-        row0 = QHBoxLayout(); row0.setSpacing(8)
-        row0.addWidget(self._btn("保存地址", "ghost", self._on_save_url))
-        row0.addWidget(self._btn("打开网页版", "ghost", lambda: self._cb["open_site"]()))
-        row0.addStretch(1)
-        c0.add(_hbox(row0))
-        self._url_state = mk_label("", role="muted")
-        c0.add(self._url_state)
+        self._state = mk_label("", role="body")
+        c0.add(self._state)
         col.addWidget(c0)
 
-        # ---- 未登录: 登录 / 注册 ----
-        self._login_card = Card()
-        self._login_card.add(mk_label("登录", role="h2"))
-        self._login_card.add(mk_label(
-            "用网页版注册的账号登录。", role="muted"))
-        self._username = QLineEdit(); self._username.setPlaceholderText("用户名")
-        self._password = QLineEdit(); self._password.setPlaceholderText("密码")
-        self._password.setEchoMode(QLineEdit.Password)
-        self._login_card.add(self._username)
-        self._login_card.add(self._password)
-        row1 = QHBoxLayout(); row1.setSpacing(8)
-        row1.addWidget(self._btn("登录", "primary", self._on_login))
-        row1.addStretch(1)
-        self._login_card.add(_hbox(row1))
-
-        self._login_card.add(mk_divider())
-        self._login_card.add(mk_label("没有账号? 在这里注册", role="h2"))
-        self._reg_username = QLineEdit()
-        self._reg_username.setPlaceholderText("用户名 (3–20 字, 中文/字母/数字/下划线)")
-        self._reg_password = QLineEdit(); self._reg_password.setPlaceholderText("密码 (至少 8 位)")
-        self._reg_password.setEchoMode(QLineEdit.Password)
-        for w in (self._reg_username, self._reg_password):
-            self._login_card.add(w)
-        row2 = QHBoxLayout(); row2.setSpacing(8)
-        row2.addWidget(self._btn("注册", "ghost", self._on_register))
-        row2.addStretch(1)
-        self._login_card.add(_hbox(row2))
-        col.addWidget(self._login_card)
-
-        # ---- 已登录: 上传 / 退出 ----
-        self._account_card = Card()
-        self._account_card.add(mk_label("已登录", role="h2"))
-        self._who = mk_label("", role="body")
-        self._account_card.add(self._who)
-        self._account_card.add(mk_divider())
-        self._archive = mk_label("", role="muted")
-        self._account_card.add(self._archive)
-        row3 = QHBoxLayout(); row3.setSpacing(8)
-        row3.addWidget(self._btn("上传到服务器", "primary", lambda: self._on_upload("merge")))
-        row3.addWidget(self._btn("打开网页版", "ghost", lambda: self._cb["open_site"]()))
-        row3.addStretch(1)
-        self._account_card.add(_hbox(row3))
-        self._account_card.add(mk_label(
-            "上传只增不减: 服务器会把它已有的记录和这份合并, 重复的抽数会自动去掉。\n"
-            "所以重装系统、换电脑之后再上传, 也不会把服务器上更早的历史冲掉。",
+        # ---- 手动上传(内嵌网页) ----
+        c1 = Card()
+        c1.add(mk_label("手动上传", role="h2"))
+        c1.add(mk_label(
+            "需要手动补传、或想看看服务器上现有记录时，可以直接在这里操作（也可以点“用浏览器打开”）。",
             role="muted"))
-        row4 = QHBoxLayout(); row4.setSpacing(8)
-        row4.addWidget(self._btn("退出登录", "ghost", lambda: self._cb["logout"]()))
-        row4.addStretch(1)
-        self._account_card.add(_hbox(row4))
-        col.addWidget(self._account_card)
+        c1.add(mk_label(
+            "点下面的按钮会用系统浏览器打开手动上传页（飞牛 fnOS 的网页应用，"
+            "需要浏览器里操作）。",
+            role="muted"))
+        row2 = QHBoxLayout(); row2.setSpacing(8)
+        row2.addWidget(self._btn("用浏览器打开", "ghost", lambda: self._cb["open_manual"]()))
+        row2.addStretch(1)
+        c1.add(_hbox(row2))
+        col.addWidget(c1)
 
-        # ---- 状态 ----
-        c3 = Card()
-        self._state = mk_label("", role="body")
-        c3.add(self._state)
-        col.addWidget(c3)
         col.addStretch(1)
-
-        self.set_state(None, "")
+        self.set_upload_state("", 0, 0, "")
 
     # ---- 事件 ----
-    def _on_save_url(self) -> None:
-        self._cb["save_url"](self._url.text())
+    def _on_upload(self) -> None:
+        self._cb["upload"]()
 
-    def _on_login(self) -> None:
-        self._cb["login"](self._url.text(), self._username.text(),
-                          self._password.text())
+    def upload_endpoint(self) -> str:
+        return self._endpoint.text().strip()
 
-    def _on_register(self) -> None:
-        self._cb["register"](self._url.text(), self._reg_username.text(),
-                             self._reg_password.text())
-
-    def _on_upload(self, mode: str) -> None:
-        self._cb["upload"](mode)
+    def set_upload_endpoint(self, endpoint: str) -> None:
+        if endpoint:
+            self._endpoint.setText(endpoint)
 
     # ---- 状态 ----
-    def set_state(self, account, archive_text: str) -> None:
-        """account 为 None 或未登录时显示登录卡; 否则显示上传卡。"""
-        logged_in = bool(account is not None and getattr(account, "logged_in", False))
-        if account is not None and account.server_url:
-            # 不要覆盖用户正在编辑的内容
-            if not self._url.hasFocus() and self._url.text().strip() != account.server_url:
-                self._url.setText(account.server_url)
-            self._url_state.setText(f"当前: {account.server_url}")
+    def set_upload_state(self, uid: str, groups: int, pulls: int, note: str = "") -> None:
+        """账号/记录摘要 + 一行说明(上传结果、错误、等待提示都塞这里)。"""
+        if uid:
+            self._who.setText(f"游戏 UID：{uid}")
         else:
-            self._url_state.setText("尚未设置服务器地址")
-
-        self._login_card.setVisible(not logged_in)
-        self._account_card.setVisible(logged_in)
-        if logged_in:
-            self._who.setText(f"账号: {account.username or '(未知)'}")
-        self._archive.setText(archive_text or "尚未加载本地归档")
-
-    def set_busy(self, busy: bool) -> None:
-        for b in self.findChildren(QPushButton):
-            b.setEnabled(not busy)
+            self._who.setText("当前账号还没有 UID —— 先在「数据与设置」里填好或从游戏读取")
+        if groups > 0:
+            self._archive.setText(f"本地归档：{pulls} 抽 / {groups} 组记录")
+        else:
+            self._archive.setText("本地归档里还没有记录 —— 先在「数据与设置」里抓取一次游戏数据")
+        self._state.setText(note)
+        self._upload_btn.setEnabled(bool(uid) and groups > 0)
 
     def set_status(self, text: str) -> None:
         self._state.setText(text)
 
-    def clear_password(self) -> None:
-        self._password.clear()
-        self._reg_password.clear()
+    def set_busy(self, busy: bool) -> None:
+        self._upload_btn.setEnabled(not busy and bool(self._who.text().strip()))
+
+    def bind_command_hint(self, command: str) -> None:
+        self._state.setText(f"绑定指令（发给蕾姆）：{command}")
 
     def _btn(self, txt, role, fn) -> QPushButton:
         b = QPushButton(txt); b.setProperty("role", role)
-        b.setCursor(Qt.PointingHandCursor); b.clicked.connect(fn)
+        b.setCursor(Qt.PointingHandCursor)
+        # clicked 会带 checked(bool): 回调要带默认参数时写成 `lambda _checked=False, x=...:`
+        b.clicked.connect(fn)
         return b
 
 

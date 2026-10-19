@@ -1,0 +1,307 @@
+"""上传抽卡记录到蕾姆(Rem)。
+
+接口语义照搬上游 zhenkotone/stellasora_gacha 的 upload.py:
+
+    POST https://yostar.772077.xyz:7777/stellasora/api/gacha/upload
+    {"uid": "<5-15 位数字>", "record": <完整的 <uid>.json>}
+    无鉴权(没有 Token / Cookie / CSRF)
+    成功 {"ok": true, "bindCommand": "星塔抽卡绑定 UID xxx"}
+    失败 {"error": "..."}; 429 会带 Retry-After
+
+注意"上传 ≠ 绑定": 上传只是把归档暂存到服务器, 还要把 bindCommand 这条指令发给
+蕾姆才算正式更新。所以首次上传成功时界面提示一次, 状态记在账号目录下的
+rem_upload_state.json(同一 UID 以后不再弹)。
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import socket
+import ssl
+from dataclasses import dataclass, field
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
+
+UPLOAD_URL = "https://yostar.772077.xyz:7777/stellasora/api/gacha/upload"
+STATE_FILENAME = "rem_upload_state.json"
+ENDPOINT_FILENAME = "rem_upload_endpoint.txt"
+UID_RE = re.compile(r"^[0-9]{5,15}$")
+MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
+MAX_PULLS = 200000
+CATEGORY_KEYS = frozenset({"1", "2", "3", "4"})
+BIND_TEMPLATE = "星塔抽卡绑定 UID {uid}"
+MAX_SAFE_INT = 2**53 - 1
+
+
+class RemUploadError(RuntimeError):
+    """上传失败; 消息可以直接显示给用户。"""
+
+    @property
+    def message(self) -> str:
+        return str(self)
+
+
+@dataclass(frozen=True)
+class RemUploadResult:
+    status_code: int
+    payload: dict = field(default_factory=dict)
+    uid: str = ""
+
+    @property
+    def bind_command(self) -> str:
+        return str(self.payload.get("bindCommand") or bind_command_for(self.uid))
+
+
+def bind_command_for(uid: str) -> str:
+    """发给蕾姆的绑定指令(服务器没给 bindCommand 时用这个模板)。"""
+    return BIND_TEMPLATE.format(uid=validate_uid(uid))
+
+
+def validate_uid(uid: object) -> str:
+    value = str(uid or "").strip()
+    if not UID_RE.fullmatch(value):
+        raise RemUploadError("游戏 UID 必须是 5-15 位数字")
+    return value
+
+
+def _valid_number(value: object) -> bool:
+    return type(value) is int and 0 < value <= MAX_SAFE_INT
+
+
+def validate_record(archive_path: Path, uid: str) -> dict:
+    """按上游服务端的口径校验归档, 通过后返回可上传的 record。"""
+    archive_path = Path(archive_path)
+    uid = validate_uid(uid)
+    if archive_path.name != f"{uid}.json":
+        raise RemUploadError(f"归档文件名（{archive_path.name}）与 UID 不一致，已取消上传")
+    if not archive_path.is_file():
+        raise RemUploadError(f"未找到归档文件：{archive_path.name}")
+    if archive_path.stat().st_size > MAX_PAYLOAD_BYTES:
+        raise RemUploadError("归档超过服务器允许的 16 MiB 大小限制")
+    try:
+        record = json.loads(archive_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as error:
+        raise RemUploadError(f"无法读取归档文件：{error}") from error
+    if not isinstance(record, dict):
+        raise RemUploadError("归档内容不是 JSON 对象")
+    record = dict(record)
+    version = record.get("version", 1)
+    if type(version) is not int or version != 1:
+        raise RemUploadError("不支持此归档版本")
+    if "uid" in record and record["uid"] != uid:
+        raise RemUploadError("归档内的 UID 与文件名不一致，已取消上传")
+    record["version"] = 1
+    record["uid"] = uid
+    categories = record.get("categories")
+    if not isinstance(categories, dict) or not categories or set(categories) - CATEGORY_KEYS:
+        raise RemUploadError("归档中没有有效的抽卡分类")
+    pulls = 0
+    for groups in categories.values():
+        if not isinstance(groups, list):
+            raise RemUploadError("归档分类必须是数组")
+        for group in groups:
+            if not isinstance(group, dict) or not all(
+                    _valid_number(group.get(key)) for key in ("Gid", "Time")):
+                raise RemUploadError("归档中存在无效的卡池 ID 或时间")
+            ids = group.get("Ids")
+            if not isinstance(ids, list) or not ids or not all(_valid_number(v) for v in ids):
+                raise RemUploadError("归档中存在无效的抽卡结果")
+            pulls += len(ids)
+    if pulls > MAX_PULLS:
+        raise RemUploadError("归档超过服务器允许的 200000 抽限制")
+    return record
+
+
+def build_body(record: dict, uid: str) -> bytes:
+    """请求体: {"uid": ..., "record": ...}; 与上游一致的紧凑写法。"""
+    body = json.dumps({"uid": uid, "record": record},
+                      ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    if len(body) > MAX_PAYLOAD_BYTES:
+        raise RemUploadError("归档超过服务器允许的 16 MiB 大小限制")
+    return body
+
+
+def _decode(status_code: int, body: bytes) -> dict:
+    try:
+        payload = json.loads(body.decode("utf-8-sig"))
+    except (UnicodeDecodeError, ValueError) as error:
+        sample = body[:300].decode("utf-8", errors="replace")
+        raise RemUploadError(f"上传服务返回非 JSON（HTTP {status_code}）：{sample}") from error
+    if not isinstance(payload, dict):
+        raise RemUploadError(f"上传服务返回格式无效（HTTP {status_code}）")
+    return payload
+
+
+def diagnose(url: str) -> str:
+    """给失败的上传地址做个体检, 返回一句人话(解析不了/端口不通/TLS 问题)。"""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    if not host:
+        return "上传地址格式不对"
+    try:
+        socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as err:
+        code = getattr(err, "errno", "") or ""
+        return (f"域名解析失败（{host} 当前没有可用的 A 记录{('，错误码 ' + str(code)) if code else ''}）。"
+                f"服务器可能已下线或换了地址；可以先用页面下方的「手动上传」网页。")
+    except OSError as err:
+        return f"解析 {host} 时出错：{err}"
+    try:
+        with socket.create_connection((host, port), timeout=8):
+            pass
+    except OSError as err:
+        return f"能解析 {host}，但连不上 {host}:{port}（{err}）。端口可能被墙或服务未启动。"
+    return ""      # 网络层没问题, 那就是协议/证书层面的事
+
+
+def _legacy_tls_context() -> ssl.SSLContext:
+    """有些老服务器的证书/协议很旧, Python 新默认会拒绝; 这里放宽一次再试。"""
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    try:
+        context.minimum_version = ssl.TLSVersion.TLSv1
+        context.maximum_version = ssl.TLSVersion.TLSv1_2
+        context.set_ciphers("DEFAULT:@SECLEVEL=1")
+    except (ValueError, ssl.SSLError):
+        pass
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+def _candidate_endpoints(endpoint: str) -> list[tuple[str, ssl.SSLContext | None, str]]:
+    """按"最可能成功"的顺序排: HTTPS → 老 TLS → 明文 HTTP。
+
+    上游最初就是 http/https 两种都有人跑, 端口 7777 上到底哪种, 只有试了才知道。
+    """
+    parts = urlsplit(endpoint)
+    candidates: list[tuple[str, ssl.SSLContext | None, str]] = [(endpoint, None, "HTTPS")]
+    if parts.scheme == "https":
+        candidates.append((endpoint, _legacy_tls_context(), "HTTPS（兼容旧 TLS）"))
+        candidates.append((endpoint.replace("https://", "http://", 1), None, "HTTP"))
+    return candidates
+
+
+def upload_file(archive_path: Path, *, endpoint: str = UPLOAD_URL,
+                timeout: float = 45.0) -> RemUploadResult:
+    """校验并上传一个 <uid>.json; 失败抛 RemUploadError。
+
+    会依次尝试 HTTPS → 兼容旧 TLS 的 HTTPS → 明文 HTTP（上游端口 7777 上两种协议
+    都出现过）, 全部失败时把体检结果写进错误信息, 方便判断是"域名没了"还是"被墙"。
+    """
+    archive_path = Path(archive_path)
+    uid = validate_uid(archive_path.stem)
+    record = validate_record(archive_path, uid)
+    body = build_body(record, uid)
+    network_errors: list[str] = []
+    for candidate, context, label in _candidate_endpoints(endpoint):
+        request = Request(
+            candidate,
+            data=body,
+            method="POST",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "StellaSoraGachaTool/1.0",
+            },
+        )
+        try:
+            with urlopen(request, timeout=timeout, context=context) as response:
+                status_code = int(response.status)
+                response_body = response.read()
+            return _finish(status_code, response_body, uid)
+        except HTTPError as error:
+            return _raise_http_error(error, uid)
+        except (URLError, TimeoutError, OSError) as error:
+            network_errors.append(f"{label}: {error}")
+            continue
+    diagnosis = diagnose(endpoint)
+    detail = "；".join(network_errors[:3])
+    hint = diagnosis or "网络层能连通, 但协议/证书握手失败 —— 端口 7777 上可能不是 HTTPS。"
+    raise RemUploadError(f"连接上传服务失败：{hint}\n（尝试过 {len(network_errors)} 种方式：{detail}）")
+
+
+def _finish(status_code: int, response_body: bytes, uid: str) -> RemUploadResult:
+    payload = _decode(status_code, response_body)
+    if not 200 <= status_code < 300 or payload.get("ok") is not True:
+        raise RemUploadError(str(payload.get("error") or f"上传失败：HTTP {status_code}"))
+    if "uid" in payload and payload["uid"] != uid:
+        raise RemUploadError("服务器返回的 UID 不一致，请勿绑定")
+    return RemUploadResult(status_code=status_code, payload=payload, uid=uid)
+
+
+def _raise_http_error(error: HTTPError, uid: str) -> None:
+    response_body = error.read()
+    try:
+        message = str(_decode(error.code, response_body).get("error") or f"HTTP {error.code}")
+    except RemUploadError:
+        message = f"HTTP {error.code}"
+    if error.code == 429:
+        delay = error.headers.get("Retry-After", "600") if error.headers else "600"
+        message += f"（Retry-After: {delay} 秒，请稍后再试）"
+    raise RemUploadError(f"上传失败：{message}")
+
+def uploaded_uids(directory: Path) -> set[str]:
+    """读过 rem_upload_state.json; 文件缺失或损坏都当空集合。"""
+    path = Path(directory) / STATE_FILENAME
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return set()
+    values = payload.get("uploadedUids") if isinstance(payload, dict) else None
+    if not isinstance(values, list):
+        return set()
+    return {value for value in values if isinstance(value, str) and UID_RE.fullmatch(value)}
+
+
+def mark_uploaded(directory: Path, uid: str) -> bool:
+    """记下"这个 UID 已上传过"; 返回是否是首次(界面据此决定弹不弹绑定指令)。"""
+    uid = validate_uid(uid)
+    directory = Path(directory)
+    uploaded = uploaded_uids(directory)
+    if uid in uploaded:
+        return False
+    uploaded.add(uid)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / STATE_FILENAME
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps({"version": 1, "uploadedUids": sorted(uploaded)}, ensure_ascii=False, indent=2),
+        encoding="utf-8")
+    temporary.replace(path)
+    return True
+
+
+def load_endpoint(directory: Path) -> str:
+    """用户改过的上传地址(没有就用默认地址)。"""
+    try:
+        value = (Path(directory) / ENDPOINT_FILENAME).read_text(encoding="utf-8").strip()
+    except OSError:
+        return UPLOAD_URL
+    return value if value.startswith(("http://", "https://")) else UPLOAD_URL
+
+
+def save_endpoint(directory: Path, endpoint: str) -> bool:
+    """记住上传地址; 非法地址返回 False。"""
+    value = str(endpoint or "").strip()
+    if not value.startswith(("http://", "https://")):
+        return False
+    try:
+        directory = Path(directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / ENDPOINT_FILENAME).write_text(value, encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+__all__ = [
+    "UPLOAD_URL", "STATE_FILENAME", "ENDPOINT_FILENAME", "BIND_TEMPLATE",
+    "MAX_PAYLOAD_BYTES", "MAX_PULLS", "RemUploadError", "RemUploadResult",
+    "bind_command_for", "validate_uid", "validate_record", "build_body",
+    "diagnose", "upload_file", "uploaded_uids", "mark_uploaded",
+    "load_endpoint", "save_endpoint",
+]

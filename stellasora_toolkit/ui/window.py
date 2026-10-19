@@ -77,11 +77,9 @@ class StellaSoraApp(BusinessWindow):
         self._settings.set_account_state('演示模式 · 不写入账号清单')
         self._settings.set_uid_state('切换本地后可填写或读取 UID，并生成分享文件')
         self._account = AccountView({
-            'save_url':self._account_save_url,'login':self._account_login,
-            'register':self._account_register,'logout':self._account_logout,
-            'upload':self._account_upload,'open_site':self._account_open_site})
-        self._account.set_state(None,'演示模式')
-        self._account.set_status('切换本地后可以连接网页版账户')
+            'upload':self._rem_upload,'copy_bind':self._rem_copy_bind,
+            'open_manual':self._open_manual_upload})
+        self._account.set_upload_state('',0,0,'演示模式不会上传。切到本地后可上传到蕾姆。')
         self._help = HelpView()
         for view in (self._settings,self._account):
             for w in view.findChildren(QPushButton)+view.findChildren(QLineEdit)+view.findChildren(QComboBox):
@@ -127,6 +125,9 @@ class StellaSoraApp(BusinessWindow):
         if old: old.deleteLater()
         self._tabs = self.stack
         self._home,self._records = self.home,self.records
+        # 新外壳里没有指标磁贴(HomeView 自己画), 旧磁贴已随旧 centralWidget 删除:
+        # 清掉引用, 让 controller._set_metrics 走"没有磁贴就跳过"的分支, 而不是碰死对象。
+        self._m = {}
         if not hasattr(self,'theme_buttons'): self._add_theme_card()
         self.navigate(self.page)
         self.refresh_button.setEnabled(not self._busy)
@@ -367,7 +368,7 @@ class StellaSoraApp(BusinessWindow):
         return side
 
     def navigation(self,layout):
-        for i,text in enumerate(['招募总览','招募记录','数据与设置','网页版账户','使用说明']):
+        for i,text in enumerate(['招募总览','招募记录','数据与设置','上传与分享','使用说明']):
             b = button(text,lambda _,page=i:self.navigate(page),'nav')
             b.setIcon(icon(('home','records','settings','account','help')[i],palette(self.variant).PRIMARY))
             b.setCheckable(True)
@@ -379,7 +380,14 @@ class StellaSoraApp(BusinessWindow):
         bar = QFrame(); bar.setObjectName('Topbar')
         outer = QVBoxLayout(bar); outer.setContentsMargins(0,0,0,0); outer.setSpacing(0)
         row = QHBoxLayout(); row.setContentsMargins(24,16,24,16); row.setSpacing(12)
-        row.addWidget(label('招募记录工具',14,p.TEXT,True))
+        titles = QVBoxLayout(); titles.setSpacing(2)
+        titles.addWidget(label('招募记录工具',14,p.TEXT,True))
+        # 副标题要跟着"当前生效版本"变, 由 controller._refresh_server_labels 更新。
+        # 必须在这里重新绑定 self._sub: 旧 header 随上一个 centralWidget 一起被删掉了,
+        # 若还指向旧标签, 更新时就会抛 "Internal C++ object (QLabel) already deleted"。
+        self._sub = label(self._subtitle_text(),11,p.MUTED)
+        titles.addWidget(self._sub)
+        row.addLayout(titles)
         row.addStretch()
         self.mode_button = button('演示 · 切换本地' if self.demo else '本地 · 预览演示',self.toggle_demo,'ghost')
         self.mode_button.setToolTip('演示数据仅用于 UI 预览；切换后可读取自己的本地归档。')

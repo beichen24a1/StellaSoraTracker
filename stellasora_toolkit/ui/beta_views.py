@@ -22,6 +22,7 @@ def button(text, callback, role='ghost'):
     b = QPushButton(text)
     b.setProperty('role', role)
     b.setCursor(Qt.PointingHandCursor)
+    # 注意 clicked 带的 checked(bool): 带默认参数的回调要写成 `lambda _checked=False, x=...:`。
     b.clicked.connect(callback)
     return b
 

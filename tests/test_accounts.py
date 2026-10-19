@@ -398,7 +398,8 @@ class PerAccountDataTests(unittest.TestCase):
                 service._categories_from_payload(service.read_archive_payload(
                     accounts.data_dir(directory, small.key))), {})
 
-    def test_upload_reads_the_active_account(self):
+    def test_export_reads_the_active_account(self):
+        """上传前用 export_share_for_uid 取归档: 内容必须来自当前账号。"""
         with temp_workdir("upload") as directory:
             accounts.ensure_ready(directory)
             a = accounts.create(directory, uid="100872990")
@@ -406,9 +407,10 @@ class PerAccountDataTests(unittest.TestCase):
             accounts.switch(directory, a.key)
             service._write_archive(accounts.active_data_dir(directory), CATEGORIES_A, uid=a.uid)
 
-            from stellasora_toolkit import server_upload
-            categories = server_upload.read_archive(directory)
-        self.assertEqual(sorted(categories), ["1"])
+            path = service.export_share_for_uid(directory)
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(path.name, "100872990.json")
+        self.assertEqual(sorted(payload["categories"]), ["1"])
 
 
 if __name__ == "__main__":
