@@ -1,6 +1,6 @@
 {
-  "version": "1.2.23",
-  "url": "https://github.com/zhenkotone/stellasora_gacha/releases/download/v1.2.23/StellaSoraGachaTool-Portable-1.2.23.zip",
-  "sha256": "b8029a29e26e52c6073e912181c007ba61ff779d064bf92e4a4151e1f0d2615a",
-  "notes": "新增防串号保护：同次游戏启动换 UID 时停止保存，读取前后核验账号，保存和上传前检查不同 UID 归档的异常重复。换号仍请完全退出并重启游戏。已混入的旧档不会自动删除或修复，请先备份整个 exports，再分别读取核对。"
+  "version": "1.2.24",
+  "url": "https://github.com/zhenkotone/stellasora_gacha/releases/download/v1.2.24/StellaSoraGachaTool-Portable-1.2.24.zip",
+  "sha256": "70f26975893721a12eb614c706a499b86456d4f9b6f1b3ca28ceeb82f6124f2f",
+  "notes": "新增周年特选招募：独立统计，160 抽保底，不区分 UP/歪；请在游戏内单独打开其招募记录后刷新。更新尘沙（源初）及新秘纹卡池与图片，补充火垂复刻资料，支持千都世、希娅进入常驻后的识别。修正未出过 UP 时首页垫抽被歪重置的问题。周年原始分类 6 完整保留，蕾姆上传服务需同步支持；本地归档不受影响。换号仍需完全退出并重启游戏，更新前建议备份 exports。"
 }
