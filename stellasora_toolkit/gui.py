@@ -38,6 +38,7 @@ from .account_guard import AccountSafetyError
 from .upload import mark_upload_success, upload_archive
 from .gacha_display import SparkReward, build_spark_rewards, insert_spark_rewards
 from .gacha_stats import (
+    CATEGORY_ANNIVERSARY,
     CATEGORY_DISC_LIMITED,
     CATEGORY_DISC_STANDARD,
     CATEGORY_TRAVELER_LIMITED,
@@ -60,29 +61,39 @@ ACCENT = "#5a89a7"
 ACCENT_DARK = "#476d8b"
 WARM = "#c58b68"
 HEADER = "#607d98"
-POOL_COLORS = ("#7776aa", "#4d9ba0", "#5d82a9", "#8e6d9c")
+POOL_COLORS = ("#7776aa", "#4d9ba0", "#5d82a9", "#8e6d9c", "#a0804e")
 FIVE_STAR_AVATAR_SIZE = 70
 FIVE_STAR_TILE_IMAGE_SIZE = 78
-APP_VERSION = "1.2.23"
+APP_VERSION = "1.2.24"
 GACHA_CATEGORY_ORDER = (
     CATEGORY_TRAVELER_LIMITED,
     CATEGORY_DISC_LIMITED,
     CATEGORY_TRAVELER_STANDARD,
     CATEGORY_DISC_STANDARD,
+    CATEGORY_ANNIVERSARY,
 )
 GACHA_CATEGORY_NAMES = {
     CATEGORY_TRAVELER_LIMITED: "旅人限时招募",
     CATEGORY_DISC_LIMITED: "秘纹限时招募",
     CATEGORY_TRAVELER_STANDARD: "旅人常驻招募",
     CATEGORY_DISC_STANDARD: "秘纹常驻招募",
+    CATEGORY_ANNIVERSARY: "周年特选招募",
 }
 GACHA_CATEGORY_PITY_LIMITS = {
     CATEGORY_TRAVELER_LIMITED: 160,
     CATEGORY_DISC_LIMITED: 120,
     CATEGORY_TRAVELER_STANDARD: 160,
     CATEGORY_DISC_STANDARD: 120,
+    CATEGORY_ANNIVERSARY: 160,
+}
+SPECIAL_POOL_INFO = {
+    1001: ("星途一载·予缘重聚", "2026-10-20", "2026-11-10"),
 }
 OFFICIAL_LIMITED_POOL_INFO = {
+    10162: ("邂逅源初之剑", "2026-10-20", "2026-11-10", "尘沙（源初）"),
+    20162: ("心意凝于剑尖", "2026-10-20", "2026-11-10", "指引前路的启明星"),
+    11115: ("乘光而起的星之砂", "2026-10-27", "2026-11-17", "火垂"),
+    21115: ("若能触及那片繁星", "2026-10-27", "2026-11-17", "星之所向"),
     10143: ("划破黑暗的银枪", "2026-02-24", "2026-03-17", "风影"),
     20143: ("春日暖阳梦微醺", "2026-02-24", "2026-03-17", "春日纪事"),
     10130: ("篇篇心意 准点送递", "2026-03-17", "2026-04-07", "多娜"),
@@ -297,7 +308,7 @@ class StellaSoraApp:
         title_box = ttk.Frame(header, style="Header.TFrame")
         title_box.grid(row=0, column=0, sticky="w")
         ttk.Label(title_box, text="星塔旅人数据工具", style="Header.TLabel").pack(anchor="w")
-        self.account_label = tk.StringVar(value="四类卡池与五星记录")
+        self.account_label = tk.StringVar(value="招募卡池与五星记录")
         ttk.Label(title_box, textvariable=self.account_label, style="HeaderSub.TLabel").pack(anchor="w", pady=(2, 0))
         ttk.Label(header, text=f"当前版本 v{APP_VERSION}", style="HeaderSub.TLabel").grid(
             row=0, column=1, sticky="e", padx=(16, 18)
@@ -503,14 +514,16 @@ class StellaSoraApp:
         paragraph("本工具用于整理《星塔旅人》Windows 客户端中当前账号已加载的招募历史，可自动识别 xtlr.exe / StellaSora.exe。", muted=True)
 
         heading("使用方法")
-        paragraph("1. 登录游戏并进入主界面，在游戏内依次打开旅人限时、秘纹限时、旅人常驻、秘纹常驻四类招募记录，等待每个记录列表显示。")
+        paragraph("1. 登录游戏并进入主界面，在游戏内依次打开旅人限时、秘纹限时、旅人常驻、秘纹常驻及周年特选招募记录，等待每个记录列表显示。")
         paragraph("2. 打开本工具并确认 Windows 管理员授权提示，再点击“刷新游戏数据”；多个游戏客户端同时运行时，按程序位置和 PID 选择本次要读取的客户端。取消授权时软件不会启动。")
         paragraph("3. 新角色和秘纹图片会随软件版本内置更新；软件版本可通过“检查更新”进行升级。")
 
         heading("数据与备份")
         paragraph("每次刷新都会合并更新 exports/UID.json，其中 UID 是当前游戏账号的数字标识。官方记录可能只保留最近半年，请定期备份该文件。")
         paragraph("归档使用从所选进程读取的完整 UID，不按 UID 前缀推断区服；当前仍使用内置中文名称和卡池资料，海外客户端的 UID 与记录读取兼容性需要实际验证。")
+        paragraph("周年特选招募独立统计，160 抽保底；任意五星都会重置垫抽，不显示 UP / 歪，也不计入旅人限时池的 120 抽井奖励。")
         paragraph("点击“上传抽卡记录到蕾姆”会上传完整 UID.json。同一 UID 在本地首次上传成功时弹出绑定指令，之后不再弹出；设置中始终可以复制指令。现有接口每次上传后仍需向蕾姆发送该指令确认更新，上传成功不代表正式记录已经更新。")
+        paragraph("周年记录保留游戏原始分类 6。上传服务需要支持该分类；若服务器拒绝，请联系服务维护者适配，本地归档仍会完整保留。")
         paragraph("归档包含游戏 UID 和抽卡记录，不包含密码、Cookie、SDK token、进程地址或网络会话数据。上传仅在点击上传按钮后进行，请勿公开分享归档。")
 
         heading("风险与免责声明", warning=True)
@@ -533,8 +546,9 @@ class StellaSoraApp:
         categories = self.snapshot.gacha_categories or {1: self.snapshot.gacha}
         semantic_categories: dict[str, list[dict]] = {}
         for groups in categories.values():
-            category = classify_history_category(groups)
-            semantic_categories.setdefault(category, []).extend(groups)
+            for group in groups:
+                category = classify_history_category([group])
+                semantic_categories.setdefault(category, []).append(group)
         return semantic_categories
 
     def _fill_five_star_stats(self) -> None:
@@ -560,7 +574,7 @@ class StellaSoraApp:
         intro.pack(fill="x", padx=12, pady=(12, 8))
         ttk.Label(
             intro,
-            text=f"四类卡池详情 · 五星记录 {total_five}",
+            text=f"卡池详情 · 五星记录 {total_five}",
             background=PANEL,
             foreground=INK,
             font=("Microsoft YaHei UI", 11, "bold"),
@@ -1279,7 +1293,7 @@ class StellaSoraApp:
             f"{total_pulls} 抽 · {total_five_stars} 个五星\n"
             f"{date_range}\n归档批次 {len(snapshot.gacha)}"
         )
-        self.gacha_sidebar_summary.set(f"{total_pulls} 抽 · {total_five_stars} 个五星\n已加载 {loaded_categories}/4 类卡池")
+        self.gacha_sidebar_summary.set(f"{total_pulls} 抽 · {total_five_stars} 个五星\n已加载 {loaded_categories}/{len(GACHA_CATEGORY_ORDER)} 类卡池")
         self._refresh_gacha_sidebar()
         self._fill_five_star_stats()
         self._fill_gacha()
@@ -1421,6 +1435,7 @@ class StellaSoraApp:
     def _add_five_star_banner_card(self, row: int, category: str, pool: PoolStats, *, reward: SparkReward | None = None) -> None:
         color = POOL_COLORS[GACHA_CATEGORY_ORDER.index(category)]
         official_pool = OFFICIAL_LIMITED_POOL_INFO.get(pool.gid)
+        pool_info = official_pool or SPECIAL_POOL_INFO.get(pool.gid)
         standard_pool_name = {
             1: "旅人常驻招募",
             2: "秘纹常驻招募",
@@ -1435,7 +1450,7 @@ class StellaSoraApp:
         title.grid(row=0, column=0, sticky="w")
         tk.Label(
             title,
-            text=official_pool[0] if official_pool is not None else standard_pool_name or f"卡池 {pool.gid}",
+            text=pool_info[0] if pool_info is not None else standard_pool_name or f"卡池 {pool.gid}",
             background="#f4f8fb",
             foreground=INK,
             font=("Microsoft YaHei UI", 12, "bold"),
@@ -1443,8 +1458,8 @@ class StellaSoraApp:
         tk.Label(
             title,
             text=(
-                f"{official_pool[1]} - {official_pool[2]} · ID {pool.gid}"
-                if official_pool is not None
+                f"{pool_info[1]} - {pool_info[2]} · ID {pool.gid}"
+                if pool_info is not None
                 else f"{self._format_date(pool.start_time)} - {self._format_date(pool.end_time)}"
             ),
             background="#f4f8fb",

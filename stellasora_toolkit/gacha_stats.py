@@ -11,6 +11,7 @@ CATEGORY_TRAVELER_LIMITED = "traveler_limited"
 CATEGORY_DISC_LIMITED = "disc_limited"
 CATEGORY_TRAVELER_STANDARD = "traveler_standard"
 CATEGORY_DISC_STANDARD = "disc_standard"
+CATEGORY_ANNIVERSARY = "anniversary_selected"
 CATEGORY_UNKNOWN = "unknown"
 
 
@@ -21,6 +22,8 @@ def classify_history_category(groups: list[dict[str, Any]]) -> str:
             gids.add(int(group.get("Gid")))
         except (TypeError, ValueError):
             continue
+    if gids == {1001}:
+        return CATEGORY_ANNIVERSARY
     if any(20_000 <= gid < 30_000 for gid in gids):
         return CATEGORY_DISC_LIMITED
     if any(10_000 <= gid < 20_000 for gid in gids):
@@ -50,7 +53,7 @@ class PoolStats:
     start_time: int
     end_time: int
     five_stars: tuple[FiveStarPull, ...]
-    pity_reset_position: int = 0
+    pity_reset_position: int | None = None
 
     @property
     def average_pulls(self) -> int | None:
@@ -61,7 +64,7 @@ class PoolStats:
     @property
     def current_pity(self) -> int:
         """Pulls since the most recent pity-resetting (UP) five-star."""
-        if self.pity_reset_position:
+        if self.pity_reset_position is not None:
             return self.total_pulls - self.pity_reset_position
         if not self.five_stars:
             return self.total_pulls

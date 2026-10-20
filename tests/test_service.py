@@ -8,6 +8,55 @@ from stellasora_toolkit.service import LEGACY_ARCHIVE_FILENAME, _load_archive, _
 
 
 class ServiceTests(unittest.TestCase):
+    def test_anniversary_archive_round_trip_preserves_raw_category_and_gid(self):
+        groups = [{"Gid": 1001, "Time": 1792487790, "Ids": [211005, 112], "NextPackage": ""}]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _write_archive(root, "123456789", {6: groups})
+            payload = json.loads((root / "123456789.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["version"], 1)
+            self.assertEqual(set(payload["categories"]), {"1", "2", "3", "4", "6"})
+            self.assertEqual(payload["categories"]["6"], groups)
+            self.assertEqual(_load_archive(root, "123456789")[6], groups)
+            snapshot = load_latest_snapshot(root)
+            self.assertEqual(snapshot.gacha_categories[6], groups)
+            self.assertEqual(snapshot.pull_count, 2)
+
+    def test_old_archive_does_not_gain_an_anniversary_category(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _write_archive(root, "123456789", {1: []})
+            payload = json.loads((root / "123456789.json").read_text(encoding="utf-8"))
+            self.assertEqual(set(payload["categories"]), {"1", "2", "3", "4"})
+
+    def test_explicit_empty_anniversary_category_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _write_archive(root, "123456789", {6: []})
+            self.assertEqual(_load_archive(root, "123456789")[6], [])
+
+    def test_write_rejects_unsupported_categories_without_overwriting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "123456789.json"
+            _write_archive(root, "123456789", {1: []})
+            before = archive.read_bytes()
+            for categories in ({5: []}, {7: []}, {True: []}, {6.0: []}, {"6": []}, {6: {}}, []):
+                with self.subTest(categories=categories), self.assertRaises(ValueError):
+                    _write_archive(root, "123456789", categories)
+                self.assertEqual(archive.read_bytes(), before)
+                self.assertFalse((root / ".123456789.json.tmp").exists())
+
+    def test_load_rejects_unknown_category_five_without_modifying_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "123456789.json"
+            archive.write_text(json.dumps({"uid": "123456789", "categories": {"5": []}}))
+            before = archive.read_bytes()
+            with self.assertRaises(ValueError):
+                _load_archive(root, "123456789")
+            self.assertEqual(archive.read_bytes(), before)
+
     def test_uid_archive_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

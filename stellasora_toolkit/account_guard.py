@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+from .history_schema import HISTORY_CATEGORY_KEYS
+
 
 SESSION_DIRECTORY = "account_sessions"
 UID_PATTERN = re.compile(r"[0-9]{5,15}")
@@ -33,7 +35,7 @@ def check_process_account(output_dir: Path, pid: int, creation_time: int, uid: s
     if blocked.exists():
         raise AccountSafetyError(
             "这次游戏启动期间已检测到账号切换或 UID 异常，已停止保存。"
-            "请完全退出并重启游戏，再登录目标账号、依次打开四类招募记录后读取。"
+            "请完全退出并重启游戏，再登录目标账号、依次打开各类招募记录后读取。"
             "只重启工具或切回原账号不能解除保护。"
         )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,7 +59,7 @@ def check_process_account(output_dir: Path, pid: int, creation_time: int, uid: s
         raise AccountSafetyError(
             f"同一次游戏启动中，UID 从 {previous_uid} 变为 {uid}，可能残留上一个账号的招募记录。"
             "已停止保存，未修改抽卡归档。请完全退出并重启游戏，"
-            "再登录目标账号、依次打开四类招募记录后读取。"
+            "再登录目标账号、依次打开各类招募记录后读取。"
         )
     if blocked.exists():
         raise AccountSafetyError("本次游戏进程已被标记为账号不安全，已停止保存，请完全退出并重启游戏")
@@ -68,7 +70,7 @@ def _record_keys(categories: dict) -> set[tuple]:
         raise ValueError("invalid categories")
     keys: set[tuple] = set()
     for category, groups in categories.items():
-        if str(category) not in {"1", "2", "3", "4"} or not isinstance(groups, list):
+        if str(category) not in HISTORY_CATEGORY_KEYS or not isinstance(groups, list):
             raise ValueError("invalid category")
         for group in groups:
             if not isinstance(group, dict):

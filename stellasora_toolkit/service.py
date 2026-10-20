@@ -10,6 +10,7 @@ from typing import Callable
 from .account_guard import AccountSafetyError, block_process_session, check_account_records, check_process_account
 from .discovery import LuaTableDiscovery
 from .exporter import export_all, sanitize_gacha_categories
+from .history_schema import BASE_HISTORY_CATEGORY_IDS, HISTORY_CATEGORY_IDS, HISTORY_CATEGORY_KEYS
 from .lua53 import Lua53Reader
 from .process import RemoteProcess, find_process_id
 from .uid import AmbiguousUidError, read_game_uid_from_process
@@ -146,12 +147,17 @@ def _load_archive(output_dir: Path, uid: str) -> dict[int, list[dict]]:
         if isinstance(payload, dict) and payload.get("uid", uid) != uid:
             return {}
     categories = payload.get("categories", {}) if isinstance(payload, dict) else {}
-    if not isinstance(categories, dict) or any(key not in {"1", "2", "3", "4"} or not isinstance(value, list) for key, value in categories.items()):
+    if not isinstance(categories, dict) or any(key not in HISTORY_CATEGORY_KEYS or not isinstance(value, list) for key, value in categories.items()):
         raise ValueError("归档分类无效，已停止合并")
     return {int(key): value for key, value in categories.items() if isinstance(value, list)}
 
 
 def _write_archive(output_dir: Path, uid: str, categories: dict[int, list[dict]]) -> None:
+    if not isinstance(categories, dict) or any(
+        type(key) is not int or key not in HISTORY_CATEGORY_IDS or not isinstance(value, list)
+        for key, value in categories.items()
+    ):
+        raise ValueError("归档分类无效，已停止保存，未修改原归档")
     output_dir.mkdir(parents=True, exist_ok=True)
     archive = archive_path_for_uid(output_dir, uid)
     temporary = output_dir / f".{uid}.json.tmp"
@@ -159,7 +165,7 @@ def _write_archive(output_dir: Path, uid: str, categories: dict[int, list[dict]]
         "version": 1,
         "uid": uid,
         "updatedAt": datetime.now(timezone.utc).isoformat(),
-        "categories": {str(key): categories.get(key, []) for key in range(1, 5)},
+        "categories": {str(key): categories.get(key, []) for key in sorted(set(BASE_HISTORY_CATEGORY_IDS) | set(categories))},
     }
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(archive)

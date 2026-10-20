@@ -26,6 +26,56 @@ class _Response:
 
 
 class UploadTests(unittest.TestCase):
+    def test_anniversary_upload_preserves_complete_raw_record(self):
+        record = {
+            "version": 1,
+            "uid": "123456789",
+            "updatedAt": "2026-10-20T12:00:00Z",
+            "categories": {
+                "1": [{"Gid": 10162, "Time": 1792487780, "Ids": [162]}],
+                "2": [], "3": [], "4": [],
+                "6": [{"Gid": 1001, "Time": 1792487790, "Ids": [211005, 112], "NextPackage": ""}],
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "123456789.json"
+            archive.write_text(json.dumps(record), encoding="utf-8")
+            before = archive.read_bytes()
+            with patch("stellasora_toolkit.upload.urlopen", return_value=_Response({"ok": True})) as network:
+                upload_archive(archive, "123456789", endpoint="https://example.test/upload")
+            self.assertEqual(network.call_count, 1)
+            sent = json.loads(network.call_args.args[0].data.decode("utf-8"))
+            self.assertEqual(sent["record"], record)
+            self.assertEqual(archive.read_bytes(), before)
+
+    def test_anniversary_422_has_server_compatibility_hint_without_retry_or_file_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "123456789.json"
+            archive.write_text(json.dumps({"categories": {"6": [{"Gid": 1001, "Time": 1, "Ids": [114]}]}}))
+            before = archive.read_bytes()
+            error = HTTPError("https://example.test", 422, "invalid", {}, BytesIO(b'{"ok":false,"error":"unknown category"}'))
+            with patch("stellasora_toolkit.upload.urlopen", side_effect=error) as network:
+                with self.assertRaises(UploadError) as raised:
+                    upload_archive(archive, "123456789", endpoint="https://example.test/upload")
+            self.assertIn("unknown category", str(raised.exception))
+            self.assertIn("周年特选招募分类 6", str(raised.exception))
+            self.assertIn("本地归档已保留", str(raised.exception))
+            self.assertEqual(network.call_count, 1)
+            sent = json.loads(network.call_args.args[0].data.decode("utf-8"))
+            self.assertEqual(sent["record"]["categories"], json.loads(before)["categories"])
+            self.assertEqual(archive.read_bytes(), before)
+            self.assertFalse((Path(directory) / UPLOAD_STATE_FILENAME).exists())
+
+    def test_original_four_category_422_does_not_claim_anniversary_issue(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "123456789.json"
+            archive.write_text(json.dumps({"categories": {"1": []}}))
+            error = HTTPError("https://example.test", 422, "invalid", {}, BytesIO(b'{"ok":false,"error":"invalid record"}'))
+            with patch("stellasora_toolkit.upload.urlopen", side_effect=error):
+                with self.assertRaises(UploadError) as raised:
+                    upload_archive(archive, "123456789", endpoint="https://example.test/upload")
+            self.assertNotIn("分类 6", str(raised.exception))
+
     def test_upload_sends_uid_and_complete_record(self):
         with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory) / "123456789.json"

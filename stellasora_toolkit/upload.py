@@ -8,6 +8,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .account_guard import AccountSafetyError, check_account_records
+from .history_schema import HISTORY_CATEGORY_KEYS
 
 UPLOAD_URL = "https://yostar.772077.xyz:7777/stellasora/api/gacha/upload"
 UID_RE = re.compile(r"^[0-9]{5,15}$")
@@ -76,7 +77,7 @@ def _read_record(archive_path: Path, uid: str) -> dict:
     record["version"] = 1
     record["uid"] = uid
     categories = record.get("categories")
-    if not isinstance(categories, dict) or not categories or set(categories) - {"1", "2", "3", "4"}:
+    if not isinstance(categories, dict) or not categories or set(categories) - HISTORY_CATEGORY_KEYS:
         raise UploadError("归档中没有有效的抽卡分类")
     pulls = 0
     valid_number = lambda value: type(value) is int and 0 < value <= 2**53 - 1
@@ -150,6 +151,8 @@ def upload_archive(
         if error.code == 429:
             delay = error.headers.get("Retry-After", "600") if error.headers else "600"
             message += f"（Retry-After: {delay}，请稍后再试）"
+        if error.code == 422 and "6" in record["categories"]:
+            message += "。服务器可能尚未支持周年特选招募分类 6，本地归档已保留；请联系上传服务维护者确认兼容性。"
         raise UploadError(f"上传失败：{message}") from error
     except (URLError, TimeoutError, OSError) as error:
         raise UploadError(f"连接上传服务失败：{error}") from error

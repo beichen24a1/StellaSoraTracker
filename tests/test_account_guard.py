@@ -173,6 +173,31 @@ class RecordAccountGuardTests(unittest.TestCase):
         self.assertEqual(self.file_bytes(), before)
         self.assertEqual(categories, original)
 
+    def test_anniversary_records_participate_in_cross_account_checks(self):
+        groups = [record(100 + index, [114, 112], gid=1001) for index in range(3)]
+        self.write_archive(UID_B, {"6": groups})
+        current = {6: groups}
+        original = copy.deepcopy(current)
+        before = self.file_bytes()
+        with self.assertRaisesRegex(AccountSafetyError, "3 条"):
+            check_account_records(self.root, UID_A, current)
+        self.assertEqual(current, original)
+        self.assertEqual(self.file_bytes(), before)
+
+    def test_nonoverlapping_anniversary_history_does_not_block(self):
+        self.write_archive(UID_B, {"6": [record(100, [114], gid=1001)]})
+        before = self.file_bytes()
+        check_account_records(self.root, UID_A, {6: [record(200, [155], gid=1001)]})
+        self.assertEqual(self.file_bytes(), before)
+
+    def test_cross_account_overlap_spanning_anniversary_and_old_categories_blocks(self):
+        categories = {1: self.shared[:2], 6: [record(102, [114], gid=1001)]}
+        self.write_archive(UID_B, categories)
+        before = self.file_bytes()
+        with self.assertRaises(AccountSafetyError):
+            check_account_records(self.root, UID_A, categories)
+        self.assertEqual(self.file_bytes(), before)
+
     def test_three_matching_batches_at_two_times_rejected(self):
         shared = [record(100, [101]), record(100, [102]), record(101, [103])]
         self.write_archive(UID_B, {"1": shared})
