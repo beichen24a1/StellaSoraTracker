@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Any
 
-from .catalog import gacha_item_kind, gacha_item_name, is_five_star_item
+from .catalog import NON_GACHA_ITEM_IDS, gacha_item_kind, gacha_item_name, is_five_star_item
 
 
 CATEGORY_TRAVELER_LIMITED = "traveler_limited"
@@ -26,6 +26,16 @@ HISTORY_CATEGORY_KEYS = {
 }
 
 
+def fallback_category_key(groups: list[dict[str, Any]]) -> int:
+    """判不出官方分类时的兜底 key —— 保证只在 1..4 之内(导出格式不能变)。
+
+    秘纹多于旅人就当秘纹限时(3), 否则旅人限时(1): 活动池/自选池本身都是限时池,
+    这样它们会和其它限时池归到一起, 但归档里不会冒出 "5" 之类的新键。
+    """
+    travelers, discs = _pull_kinds(groups)
+    return 3 if discs > travelers else 1
+
+
 def history_category_key(groups: list[dict[str, Any]]) -> int | None:
     """这条记录在官方归档里的外层分类 key(1..4);判不出来返回 None。
 
@@ -33,6 +43,32 @@ def history_category_key(groups: list[dict[str, Any]]) -> int | None:
     老导出),唯一可靠的还原方式就是从 Gid 反推。
     """
     return HISTORY_CATEGORY_KEYS.get(classify_history_category(groups))
+
+
+def _pull_kinds(groups: list[dict[str, Any]]) -> tuple[int, int]:
+    """按出货 Id 数一遍 (旅人抽数, 秘纹抽数)。
+
+    新卡池(活动/自选/联动)的 Gid 不在老的 10xxx / 20xxx 区间里, 只看 Gid 会判成
+    "未知" —— 那就靠这里面掉出来的东西是旅人还是秘纹来定分类。
+    旅人 id 是三位数(101..199), 秘纹是 2xxxxx, 另有 997-999 这类非抽卡单位要排除。
+    """
+    travelers = discs = 0
+    for group in groups:
+        ids = group.get("Ids")
+        if not isinstance(ids, (list, tuple)):
+            continue
+        for value in ids:
+            try:
+                item_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if item_id in NON_GACHA_ITEM_IDS:
+                continue
+            if item_id >= 200_000:
+                discs += 1
+            elif item_id > 0:
+                travelers += 1
+    return travelers, discs
 
 
 def classify_history_category(groups: list[dict[str, Any]]) -> str:
@@ -50,6 +86,27 @@ def classify_history_category(groups: list[dict[str, Any]]) -> str:
         return CATEGORY_TRAVELER_STANDARD
     if 2 in gids:
         return CATEGORY_DISC_STANDARD
+    # 注意: 这里**不**按掉落内容硬猜。这个函数是写归档/分享文件用的,
+    # 新活动池的 Gid 判不出来时必须返回 unknown, 由调用方保留它原本的分类 ——
+    # 否则会把游戏给的分类改掉(用户要求: uid.json 里的记录方式不能变)。
+    # 界面想"把活动池归到限时类"请用 display_category()。
+    return CATEGORY_UNKNOWN
+
+
+def display_category(groups: list[dict[str, Any]]) -> str:
+    """**只给界面用**的分类: 活动池(未知 Gid)按掉落内容归到限时类。
+
+    与 classify_history_category 的区别: 这里允许猜, 因为只影响展示分组,
+    不写任何文件; 而写归档必须保持游戏原始分类。
+    """
+    kind = classify_history_category(groups)
+    if kind != CATEGORY_UNKNOWN:
+        return kind
+    travelers, discs = _pull_kinds(groups)
+    if discs > travelers:
+        return CATEGORY_DISC_LIMITED
+    if travelers > 0:
+        return CATEGORY_TRAVELER_LIMITED
     return CATEGORY_UNKNOWN
 
 

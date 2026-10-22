@@ -40,11 +40,20 @@ def cache_filename() -> str:
 
 # 进程内动态表: gid -> (名称, 开始日期, 结束日期, UP名); None 表示尚未加载
 _active: dict[int, tuple[str, str, str, str]] | None = None
+# gid -> bannerType(如「角色限时规则」「角色自选规则」), 用于把活动/自选池归到一类
+_types: dict[int, str] = {}
+# 所有卡池的 UP 名单: [{"id": 162, "name": "...", "rarity": 5}], 名称兜底用
+_rate_up: list[dict] = []
+
+# 这些字样说明是"活动/自选/联动"这类特殊池 —— 与普通限时池分组展示, 但数据仍写 1..4
+ACTIVITY_KEYWORDS = ("自选", "活动", "特殊", "联动", "纪念", "合作", "collab", "anniversary")
 
 
-def set_active_banners(banners: dict[int, tuple[str, str, str, str]]) -> None:
-    global _active
+def set_active_banners(banners: dict[int, tuple[str, str, str, str]],
+                       types: dict[int, str] | None = None) -> None:
+    global _active, _types
     _active = banners
+    _types = dict(types or {})
 
 
 def _date_part(value: str) -> str:
@@ -62,22 +71,44 @@ def _up_names(banner: dict[str, Any]) -> str:
 
 
 def parse_banners(payload: list[dict]) -> dict[int, tuple[str, str, str, str]]:
-    """API JSON -> {gid: (名称, 开始, 结束, UP名)}。空条目丢弃。"""
+    """API JSON -> {gid: (名称, 开始, 结束, UP名)}。
+
+    常驻池(bannerType 含"常驻"/"Permanent")也收进来 —— 名字/时间对界面有用,
+    只是 UP 名留空(常驻池没有 UP 判定)。类型另存到 _types, 供"活动池"分组使用。
+    """
     result: dict[int, tuple[str, str, str, str]] = {}
+    types: dict[int, str] = {}
+    collected: list[dict] = []
     for banner in payload:
+        if not isinstance(banner, dict):
+            continue
         try:
             gid = int(banner["id"])
         except (KeyError, TypeError, ValueError):
             continue
         btype = str(banner.get("bannerType") or "")
-        # 只保留四个历史分类之外的说明: 常驻池(bannerType 含"常驻"/"Permanent")可以在 API 里,
-        # 但静态表/界面只关心限时池; 这里全部收录由调用方按需使用。
+        permanent = bool(btype) and ("常驻" in btype or "permanent" in btype.casefold())
         name = str(banner.get("name") or f"卡池 {gid}")
         start = _date_part(str(banner.get("startTime") or ""))
         end = _date_part(str(banner.get("endTime") or ""))
-        if btype and ("常驻" in btype or "permanent" in btype.casefold()):
-            continue  # 常驻池不走 UP 展示, 保持与静态表一致(兼容国服/国际服文案)
-        result[gid] = (name, start, end, _up_names(banner))
+        types[gid] = btype
+        result[gid] = (name, start, end, "" if permanent else _up_names(banner))
+        for slot, rarity in (("fiveStar", 5), ("fourStar", 4)):
+            entries = (banner.get("rateUp") or {}).get(slot) or {}
+            for entry in (entries.get("entries") or []):
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    item_id = int(entry["id"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                label = str(entry.get("name") or "").strip()
+                if item_id and label:
+                    collected.append({"id": item_id, "name": label, "rarity": rarity})
+    _types.clear()
+    _types.update(types)
+    _rate_up.clear()
+    _rate_up.extend(collected)
     return result
 
 
@@ -92,8 +123,12 @@ def fetch_banners(timeout: float = 20.0, lang: str | None = None) -> dict[int, t
         payload = json.loads(response.read().decode("utf-8"))
     if not isinstance(payload, dict) or "current" not in payload:
         raise ValueError("banners API response is not a list")
-    banners = parse_banners(payload["current"] + payload.get("upcoming", []) + payload.get("ended", []))
-    return banners
+    rows: list[dict] = []
+    for key in ("current", "permanent", "upcoming", "ended"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            rows.extend(item for item in value if isinstance(item, dict))
+    return parse_banners(rows)
 
 
 def save_banners(banners: dict[int, tuple[str, str, str, str]], cache_path: Path) -> None:
@@ -102,7 +137,8 @@ def save_banners(banners: dict[int, tuple[str, str, str, str]], cache_path: Path
     payload = {
         "fetched_at": datetime.now().isoformat(timespec="seconds"),
         "banners": [
-            {"gid": gid, "name": name, "start": start, "end": end, "up": up}
+            {"gid": gid, "name": name, "start": start, "end": end, "up": up,
+             "type": _types.get(gid, "")}
             for gid, (name, start, end, up) in sorted(banners.items())
         ],
     }
@@ -113,10 +149,17 @@ def load_banners(cache_path: Path) -> dict[int, tuple[str, str, str, str]]:
     """读缓存; 文件缺失/损坏返回空 dict(此时由静态表兜底)。"""
     try:
         payload = json.loads(cache_path.read_text(encoding="utf-8"))
-        return {
-            int(row["gid"]): (str(row["name"]), str(row["start"]), str(row["end"]), str(row["up"]))
-            for row in payload.get("banners", [])
-        }
+        loaded: dict[int, tuple[str, str, str, str]] = {}
+        types: dict[int, str] = {}
+        for row in payload.get("banners", []):
+            gid = int(row["gid"])
+            loaded[gid] = (str(row["name"]), str(row["start"]), str(row["end"]), str(row["up"]))
+            if row.get("type"):
+                types[gid] = str(row["type"])
+        if types:
+            _types.clear()
+            _types.update(types)
+        return loaded
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
 
@@ -126,6 +169,55 @@ def official_pool_info(gid: int) -> tuple[str, str, str, str] | None:
     if _active is not None and gid in _active:
         return _active[gid]
     return OFFICIAL_LIMITED_POOL_INFO.get(gid)
+
+
+def banner_type(gid: int) -> str:
+    """这个卡池的 bannerType(没拉到就返回空串)。"""
+    try:
+        return _types.get(int(gid), "")
+    except (TypeError, ValueError):
+        return ""
+
+
+def is_activity_pool(gid: int) -> bool:
+    """是不是"活动/自选/联动"这类特殊池 —— 界面可以把它们归到同一组展示。
+
+    判定: bannerType 命中关键词; 或者 Gid 不在常规的 10xxx(旅人限时)/20xxx(秘纹限时)
+    /1(旅人常驻)/2(秘纹常驻) 区间里。数据格式不受影响(归档里仍然是 1..4)。
+    """
+    try:
+        value = int(gid)
+    except (TypeError, ValueError):
+        return False
+    btype = _types.get(value, "")
+    if btype and any(word.casefold() in btype.casefold() for word in ACTIVITY_KEYWORDS):
+        return True
+    if value < 100:                      # 1/2 常驻, 以及 5 号这类小序号池
+        return False
+    return not (10_000 <= value < 30_000)
+
+
+def pool_display_name(gid: int) -> str:
+    """卡池显示名: 官方名 > 静态表 > 「活动卡池 <gid>」/「卡池 <gid>」。
+
+    活动/自选/联动池会加「（活动）」后缀, 这样即使它们和普通限时池归在同一类里,
+    界面上一眼也能看出是特殊活动池。数据/JSON 格式不受影响。
+    """
+    info = official_pool_info(gid)
+    activity = is_activity_pool(gid)
+    if info is not None and info[0]:
+        return f"{info[0]}（活动）" if activity and "活动" not in info[0] else info[0]
+    prefix = "活动卡池" if activity else "卡池"
+    return f"{prefix} {gid}"
+
+
+def rate_up_entries() -> list[dict]:
+    """最近一次拉取里各卡池的 UP 名单([{id, name, rarity}])。
+
+    角色接口超时的时候, 这些名字可以当"第二名称来源"用 —— 新角色只要能进卡池,
+    名字就一定能补上。
+    """
+    return [dict(entry) for entry in _rate_up]
 
 
 def active_banners() -> dict[int, tuple[str, str, str, str]]:

@@ -1,5 +1,5 @@
 #define MyAppName "星塔旅人数据工具"
-#define MyAppVersion "1.2.31"
+#define MyAppVersion "1.2.39"
 #define MyAppExeName "StellaSoraGachaTool.exe"
 
 #ifndef MySourceDir
@@ -9,7 +9,7 @@
   #define MyOutputDir "..\release"
 #endif
 #ifndef MyOutputBaseFilename
-  #define MyOutputBaseFilename "StellaSoraGachaTool-Setup-1.2.31"
+  #define MyOutputBaseFilename "StellaSoraGachaTool-Setup-1.2.39"
 #endif
 
 [Setup]
@@ -30,7 +30,7 @@ SetupIconFile=..\assets\app_icon.ico
 CloseApplications=yes
 RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=1.2.31.0
+VersionInfoVersion=1.2.39.0
 VersionInfoProductName={#MyAppName}
 VersionInfoDescription={#MyAppName} 安装程序
 

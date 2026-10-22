@@ -6,7 +6,7 @@ import sys
 import threading
 from pathlib import Path
 from datetime import datetime
-from PySide6.QtCore import Qt, QUrl, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QUrl, QTimer, Signal
 from PySide6.QtGui import QIcon, QPixmap, QDesktopServices
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QFrame,QVBoxLayout,
     QHBoxLayout,QStackedWidget,QProgressBar,QButtonGroup,QPushButton,QLineEdit,
@@ -31,6 +31,8 @@ from .preferences import load_theme, save_theme
 class StellaSoraApp(BusinessWindow):
     update_result = Signal(object)
     update_package = Signal(object)
+    # 可以直接把这些文件拖进窗口导入: 网页版/桌面版导出的 <uid>.json、CSV、归档
+    DROP_SUFFIXES = ('.json', '.csv')
     def __init__(self,output: Path,*,variant=None,demo=False,dark=False,online_sync=True):
         self.output = Path(output).resolve()
         if variant is None:
@@ -56,6 +58,8 @@ class StellaSoraApp(BusinessWindow):
         self.snapshot = self._snapshot
         self._mount_shell()
         self._ui_ready = True
+        self.setAcceptDrops(True)          # 拖入 <uid>.json / CSV 直接导入
+        self._install_drop_filter()
         self.update_result.connect(self._update_checked)
         self.update_package.connect(self._install_update)
         self.render()
@@ -239,7 +243,6 @@ class StellaSoraApp(BusinessWindow):
         super()._set_busy(busy)
         if not self._ui_ready: return
         for w in self._settings.findChildren(QPushButton)+self._settings.findChildren(QLineEdit)+self._settings.findChildren(QComboBox): w.setEnabled(not busy)
-        self.mode_button.setEnabled(not busy)
 
     def _read_uid_from_game(self):
         if self.demo or self._busy: return
@@ -267,29 +270,192 @@ class StellaSoraApp(BusinessWindow):
         if self.demo or self._busy: return
         path,_ = QFileDialog.getOpenFileName(self,'导入招募记录',str(self.output),'抽卡数据 (*.json *.csv)')
         if not path: return
+        self._import_paths([Path(path)])
+
+    @classmethod
+    def dropped_paths(cls, mime) -> list[Path]:
+        """从拖放数据里挑出可导入的文件 —— 只认 .json/.csv, 目录和其它文件忽略。
+
+        PySide6 里 event.mimeData() 偶尔返回的是没有 urls() 的 QObject 包装,
+        所以拿不到 urls() 时退回解析 text/uri-list(资源管理器拖放的标准格式)。
+        """
+        if mime is None:
+            return []
+        urls = None
+        if hasattr(mime, 'urls'):
+            try:
+                urls = mime.urls()
+            except (RuntimeError, TypeError):
+                urls = None
+        if urls is None:
+            data = getattr(mime, 'data', None)
+            if data is None:
+                return []
+            try:
+                raw = bytes(data('text/uri-list'))
+            except (RuntimeError, TypeError):
+                return []
+            urls = [QUrl(line) for line in raw.decode('utf-8', 'replace').splitlines()
+                    if line.strip()]
+        paths = []
+        for url in urls:
+            if not url.isLocalFile():
+                continue
+            path = Path(url.toLocalFile())
+            if path.suffix.casefold() in cls.DROP_SUFFIXES and path.is_file():
+                paths.append(path)
+        return paths
+
+    def _install_drop_filter(self) -> None:
+        """应用级拖放兜底: 鼠标压在哪个子控件上松开都能导入。
+
+        只靠窗口的 setAcceptDrops 不够 —— 拖放事件先投递给光标下的子控件
+        (卡片、滚动区、表格…), 有些控件会把 dragEnter 吞掉, 窗口就永远收不到。
+        这里在 QApplication 上装过滤器, 所有 DragEnter/DragMove/Drop 都先过一遍。
+        """
+        app = QApplication.instance()
+        if app is None:
+            return
+        window = self
+
+        class _DropFilter(QObject):
+            def eventFilter(self, obj, event):
+                kind = event.type()
+                if kind not in (QEvent.DragEnter, QEvent.DragMove, QEvent.Drop):
+                    return False
+                try:
+                    paths = window.dropped_paths(event.mimeData())
+                except (RuntimeError, AttributeError):
+                    return False
+                if not paths or window.demo or getattr(window, '_busy', False):
+                    return False
+                if kind == QEvent.Drop:
+                    event.acceptProposedAction()
+                    window._import_paths(paths)
+                    return True
+                event.acceptProposedAction()
+                window.status(f'松开即可导入 {len(paths)} 个文件')
+                return True
+
+        self._drop_filter = _DropFilter(self)
+        app.installEventFilter(self._drop_filter)
+
+    def _import_zone(self, p):
+        """顶部手动导入区域(替代原来的「演示 · 切换本地」按钮)。
+
+        点一下选文件; 也接受把 <uid>.json / CSV 拖到这块区域上(它自己是直接接收者,
+        不依赖事件冒泡)。注意: 工具通常以管理员运行, 资源管理器没提权 —— Windows
+        会丢弃跨权限的拖放, 所以"手动点选"才是可靠入口。
+        """
+        zone = QPushButton('导入文件\n或拖到这里')
+        zone.setObjectName('ImportZone')
+        zone.setCursor(Qt.PointingHandCursor)
+        zone.setToolTip('导入抽卡记录：<uid>.json / 归档 JSON / CSV\n也可以把文件拖到这块区域')
+        zone.setFixedHeight(42)
+        zone.setMinimumWidth(126)
+        zone.setStyleSheet(
+            f"QPushButton#ImportZone{{border:1px dashed {p.BORDER if hasattr(p,'BORDER') else '#7f8fa6'};"
+            f"border-radius:10px;background:transparent;color:{p.MUTED};font-size:11px;padding:2px 8px;}}"
+            f"QPushButton#ImportZone:hover{{border-color:{p.PRIMARY};color:{p.TEXT};}}")
+        zone.clicked.connect(self._import_data)
+        zone.setAcceptDrops(True)
+        zone.dragEnterEvent = self._zone_drag_enter
+        zone.dragMoveEvent = self._zone_drag_enter
+        zone.dropEvent = self._zone_drop
+        self.import_zone = zone
+        return zone
+
+    def _zone_drag_enter(self, event):
+        if self.dropped_paths(event.mimeData()):
+            event.acceptProposedAction()
+            self.status(f'松开即可导入 {len(self.dropped_paths(event.mimeData()))} 个文件')
+        else:
+            event.ignore()
+
+    def _zone_drop(self, event):
+        paths = self.dropped_paths(event.mimeData())
+        if not paths or self.demo or self._busy:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self._import_paths(paths)
+
+    def dragEnterEvent(self, event):
+        paths = self.dropped_paths(event.mimeData())
+        if paths and not self.demo and not self._busy:
+            event.acceptProposedAction()
+            self.status(f'松开即可导入 {len(paths)} 个文件')
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event):
+        if self.dropped_paths(event.mimeData()) and not self.demo and not self._busy:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        paths = self.dropped_paths(event.mimeData())
+        if not paths or self.demo or self._busy:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self._import_paths(paths)
+
+    def _backup_archive(self, uid: str) -> bool:
+        """导入前给目标账号的归档留一份备份; 返回 False 表示备份失败(应中止)。"""
+        target = accounts.find_by_uid(self.output, uid) if uid else accounts.active_account(self.output)
+        if uid and target is None:
+            current = accounts.active_account(self.output)
+            if current is not None and not current.uid:
+                target = current
+        if target is None:
+            return True
+        archive = accounts.data_dir(self.output, target.key) / 'stellasora_gacha_archive.json'
+        if not archive.exists():
+            return True
+        backup = self.output / 'backups' / f'{target.key}_{datetime.now():%Y%m%d_%H%M%S_%f}.json'
         try:
-            source = Path(path)
-            cats,uid = parse_import_text(read_import_text(source),source.suffix)
-            if not cats: raise ValueError('文件中没有有效招募记录')
-            target = accounts.find_by_uid(self.output,uid) if uid else accounts.active_account(self.output)
-            if uid and target is None:
-                current = accounts.active_account(self.output)
-                if current is not None and not current.uid:
-                    target = current
-            directory = accounts.data_dir(self.output,target.key) if target else None
-            archive = directory/'stellasora_gacha_archive.json' if directory else None
-            if archive and archive.exists():
-                backup = self.output/'backups'/f'{target.key}_{datetime.now():%Y%m%d_%H%M%S_%f}.json'
-                backup.parent.mkdir(parents=True,exist_ok=True)
-                try: shutil.copy2(archive,backup)
-                except OSError as exc:
-                    self.status(f'创建备份失败，已停止导入：{exc}'); return
-            result = import_gacha_file(self.output,source)
-            self._apply_snapshot(Snapshot([g for groups in result.categories.values() for g in groups],
-                                          gacha_categories=result.categories,uid=result.uid,share_file=result.share_file))
-            self.status(f'导入完成 · 新增 {result.added_pulls} 抽 · UID {result.uid or "未设置"}')
-        except (OSError,ValueError,TypeError) as exc:
-            self.status(f'导入失败：{exc}')
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(archive, backup)
+        except OSError as exc:
+            self.status(f'创建备份失败，已停止导入：{exc}')
+            return False
+        return True
+
+    def _import_paths(self, sources) -> None:
+        """导入一批文件(拖入或选择): 逐个备份→合并, 最后统一刷新界面。
+
+        支持网页版/桌面版导出的 {"version","uid","updatedAt","categories"}、
+        本工具导出的 JSON/CSV、只含扁平 groups 的老导出; 文件带 uid 时按 uid 归位。
+        """
+        if self.demo or self._busy:
+            return
+        sources = [Path(source) for source in sources]
+        imported, failed = [], []
+        for source in sources:
+            try:
+                uid = ''
+                try:
+                    _cats, uid = parse_import_text(read_import_text(source), source.suffix)
+                except (OSError, ValueError, TypeError):
+                    uid = ''
+                if not self._backup_archive(uid):
+                    continue
+                imported.append(import_gacha_file(self.output, source))
+            except (OSError, ValueError, TypeError) as exc:
+                failed.append(f'{source.name}: {exc}')
+        if imported:
+            last = imported[-1]
+            self._apply_snapshot(Snapshot([g for groups in last.categories.values() for g in groups],
+                                          gacha_categories=last.categories, uid=last.uid,
+                                          share_file=last.share_file))
+            pulls = sum(item.added_pulls for item in imported)
+            groups = sum(item.added_groups for item in imported)
+            uid_text = last.uid or '未设置'
+            self.status(f'导入完成 · {len(imported)} 个文件 · 新增 {groups} 组 / {pulls} 抽 · UID {uid_text}')
+        if failed:
+            self.status(f'部分文件导入失败：' + '；'.join(failed[:3]))
 
     import_archive = _import_data
 
@@ -389,9 +555,7 @@ class StellaSoraApp(BusinessWindow):
         titles.addWidget(self._sub)
         row.addLayout(titles)
         row.addStretch()
-        self.mode_button = button('演示 · 切换本地' if self.demo else '本地 · 预览演示',self.toggle_demo,'ghost')
-        self.mode_button.setToolTip('演示数据仅用于 UI 预览；切换后可读取自己的本地归档。')
-        row.addWidget(self.mode_button)
+        row.addWidget(self._import_zone(p))
         self.refresh_button = button('抓取抽卡记录',self.refresh,'primary')
         self.refresh_button.setIcon(icon('refresh',p.ON_PRIMARY))
         row.addWidget(self.refresh_button)

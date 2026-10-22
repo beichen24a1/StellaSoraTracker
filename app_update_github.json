@@ -1,6 +1,6 @@
 {
-  "version": "1.2.31",
-  "url": "https://github.com/sfjdk/StellaSoraTracker/releases/download/v1.2.31/StellaSoraGachaTool-1.2.31-win64.zip",
-  "sha256": "ec3e9ca1a6c20fe0bfd250d546b40b0de7039ad9a001f11563d11474b8b86824",
-  "notes": "「手动上传」改为只用系统浏览器打开(内置网页移除), 因此不再内嵌 Chromium, 安装包体积回到约 100MB。上传到蕾姆: 修复 SSL UNEXPECTED_EOF_WHILE_READING —— 该域名目前没有 A 记录(服务器下线/换地址), 客户端会依次尝试 HTTPS → 兼容旧 TLS 的 HTTPS → 明文 HTTP, 全部失败时体检并说明是域名解析不到/端口不通/握手失败; 上传页新增可编辑且会记住的「上传地址」。"
+  "version": "1.2.39",
+  "url": "https://github.com/sfjdk/StellaSoraTracker/releases/download/v1.2.39/StellaSoraGachaTool-1.2.39-win64.zip",
+  "sha256": "d7a0b6b39bc1bd6cd91a2eee2973b79147a0907d9c64fdc69810486fecda5aff",
+  "notes": "性能: 抽卡记录里的序号都已经有名字(全部认识)时直接跳过在线资源查询 —— 实测刷新从可能 40 秒以上的超时降到 0.03 秒, 一次网络请求都不发; 只有出现认不出的序号、或启动同步的目录缓存超过 12 小时才联网。头像缺失也不再触发联网(按命名规则兜底补图)。"
 }

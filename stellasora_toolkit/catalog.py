@@ -44,6 +44,7 @@ TRAVELER_NAMES = {
     159: "科洛妮丝（新春）",
     160: "薇洛（盛夏）",
     157: "花铃",
+    162: "尘沙（源初）",
 }
 
 GEM_TYPE_NAMES = {1: "尖章", 2: "方菱章", 3: "星闪章"}
@@ -73,6 +74,7 @@ FIVE_STAR_TRAVELERS = {
     159,
     160,
     157,
+    162,
 }
 
 FIVE_STAR_DISCS = {
@@ -96,6 +98,8 @@ FIVE_STAR_DISCS = {
     214060: "荣誉时刻",
     214061: "睡前童话",
     214062: "美好，尽在昨日",
+    214066: "指引前路的启明星",
+    214067: "永恒的闪耀",
 }
 FIVE_STAR_ITEMS = set(FIVE_STAR_TRAVELERS) | set(FIVE_STAR_DISCS)
 

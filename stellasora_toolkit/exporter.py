@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .gacha_stats import history_category_key
+from .gacha_stats import fallback_category_key, history_category_key
 
 
 GACHA_ALLOWED = {"Gid", "Time", "Ids", "NextPackage"}
@@ -120,7 +120,11 @@ def normalize_category_keys(categories: dict[int, list[dict[str, Any]]]) -> dict
     for category, groups in categories.items():
         for group in groups:
             key = history_category_key([group])
-            result.setdefault(category if key is None else key, []).append(group)
+            if key is None:
+                # 判不出来也要落在 1..4 里(新活动池的 Gid 可能不在老区间):
+                # 原分类合法就沿用, 否则按出货内容兜底 —— 归档/分享格式永远只有四类。
+                key = category if category in (1, 2, 3, 4) else fallback_category_key([group])
+            result.setdefault(key, []).append(group)
     for groups in result.values():
         groups.sort(key=lambda item: (item.get("Time") or 0, item.get("Gid") or 0))
     return {category: groups for category, groups in result.items() if groups}

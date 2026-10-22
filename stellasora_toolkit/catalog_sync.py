@@ -21,17 +21,19 @@ tests/test_catalog_alignment.py 的离线对齐校验。)
 from __future__ import annotations
 
 import json
+import threading
 import os
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 from urllib.request import Request, urlopen
 
 from . import server_config
 from .catalog import (
-    DISC_NAMES, TRAVELER_NAMES, gacha_item_name, is_five_star_item, is_gacha_item,
-    register_gacha_resource,
+    DISC_NAMES, FIVE_STAR_DISCS, FIVE_STAR_TRAVELERS, TRAVELER_NAMES,
+    gacha_item_name, is_five_star_item, is_gacha_item, register_gacha_resource,
 )
 from .resource_manager import STELLABASE_API, STELLABASE_ASSET_API
 
@@ -42,6 +44,13 @@ ProgressCallback = Callable[[str], None]
 # 用户完全看不出自动更新其实没跑起来 —— 这里改成带重试的较长超时。
 READ_TIMEOUT = 60.0
 READ_ATTEMPTS = 3
+# 名称目录接口: 并发拉取, 单次超时短一点, 失败还有缓存/横幅兜底
+CATALOG_TIMEOUT = 40.0
+CATALOG_ATTEMPTS = 3
+# 启动同步时目录缓存的保鲜期(小时): 没过期就直接用缓存, 一次请求都不发
+CATALOG_CACHE_HOURS = 12.0
+# 即便记录序号都认识, 也每隔这么久强制联网刷新一次名称/头像
+REFRESH_HOURS = 6.0
 CATALOG_CACHE_FILENAME = "stellasora_catalog_cache.json"
 
 # 最近一次五星目录查询失败了几路(0/1/2); 供界面区分"没有缺失"与"根本没查到"。
@@ -84,6 +93,16 @@ def _save_catalog_cache(path: Path | None, items: list[dict]) -> None:
         pass
 
 
+def _cache_age_hours(path: Path | None) -> float | None:
+    """磁盘缓存目录有多旧(小时); 没有/读不了返回 None。"""
+    if path is None or not path.is_file():
+        return None
+    try:
+        return max(0.0, (time.time() - path.stat().st_mtime) / 3600.0)
+    except OSError:
+        return None
+
+
 def _load_catalog_cache(path: Path | None) -> list[dict]:
     """上次成功查到的五星目录; 缺失/损坏返回 []。"""
     if path is None:
@@ -98,58 +117,115 @@ def _load_catalog_cache(path: Path | None) -> list[dict]:
     return [item for item in items if isinstance(item, dict) and "id" in item and "kind" in item]
 
 
-def _fetch_five_star_catalog(progress: ProgressCallback | None = None) -> list[dict]:
-    """拉取 characters + discs, 返回条目: id/kind/name/icon/rarity/five_star。
-
-    名字虽然是历史命名, 但**现在返回全部稀有度** —— 只注册五星的话, 四星记录
-    永远显示内置的中文名, 切到日服/国际服时那部分记录就还是中文(用户报过这个)。
-    语言取当前激活版本(server_config.api_lang()), 所以名称语言与游戏一致;
-    头像只给五星下载(see _sync_once), 判五星只看 rarity。
-    """
-    global _fetch_failures
+def _fetch_one(endpoint: str, kind: str, rarity_key: str,
+               progress: ProgressCallback | None) -> tuple[list[dict], bool]:
+    """拉一个接口 → (条目, 是否失败)。失败不影响另一个接口。"""
+    payload = _read_url(f"{STELLABASE_API}/{endpoint}",
+                        progress, timeout=CATALOG_TIMEOUT, attempts=CATALOG_ATTEMPTS)
+    if not payload:
+        return [], True
+    try:
+        rows = json.loads(payload.decode("utf-8"))
+    except ValueError:
+        return [], True
+    if not isinstance(rows, list):
+        return [], True
     items: list[dict] = []
-    _fetch_failures = 0
-    lang = server_config.api_lang()
-    for endpoint, kind, rarity_key in (
-        (f"characters?lang={lang}", "traveler", "grade"),
-        (f"discs?lang={lang}", "disc", "star"),
-    ):
-        payload = _read_url(f"{STELLABASE_API}/{endpoint}", progress)
-        if not payload:
-            _fetch_failures += 1
+    for row in rows:
+        if not isinstance(row, dict):
             continue
         try:
-            rows = json.loads(payload.decode("utf-8"))
-        except ValueError:
-            _fetch_failures += 1
+            item_id = int(row["id"])
+            rarity = int(row.get(rarity_key, 0))
+        except (KeyError, TypeError, ValueError):
             continue
-        if not isinstance(rows, list):
-            _fetch_failures += 1
+        # BOSS/剧情单位(魔侍巨像等)在角色接口里也是 grade=5, 但抽不到, 不能注册
+        if not is_gacha_item(item_id):
             continue
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            try:
-                item_id = int(row["id"])
-                rarity = int(row.get(rarity_key, 0))
-            except (KeyError, TypeError, ValueError):
-                continue
-            icon = str(row.get("icon") or "")
-            portrait = str(row.get("portrait") or "")
-            # BOSS/剧情单位(魔侍巨像等)在角色接口里也是 grade=5, 但抽不到, 不能注册
-            if not is_gacha_item(item_id):
-                continue
-            if not (icon.startswith("/stella/assets/") or portrait.startswith("/stella/assets/")):
-                continue
-            items.append({
-                "id": item_id,
-                "kind": kind,
-                "name": str(row.get("name") or f"{kind} #{item_id}"),
-                "icon": icon or portrait,
-                "rarity": rarity,
-                "five_star": rarity >= 5,
-            })
+        name = str(row.get("name") or "").strip()
+        if not name:
+            continue                       # 连名字都没有才丢弃
+        icon = str(row.get("icon") or "")
+        portrait = str(row.get("portrait") or "")
+        # 以前这里要求必须有 icon 才收, 结果新条目一旦缺图就连名字都注册不了。
+        # 现在名字照收, icon 为空就不下头像(见 _sync_once)。
+        if not (icon.startswith("/stella/assets/") or portrait.startswith("/stella/assets/")):
+            icon = ""
+        items.append({
+            "id": item_id,
+            "kind": kind,
+            "name": name,
+            "icon": icon or portrait,
+            "rarity": rarity,
+            "five_star": rarity >= 5,
+        })
+    return items, False
+
+
+def _fetch_five_star_catalog(progress: ProgressCallback | None = None) -> list[dict]:
+    """并发拉取 characters + discs, 返回条目: id/kind/name/icon/rarity/five_star。
+
+    - 名字返回**全部稀有度**(四星也要按当前语言显示);
+    - 两个接口并发、各自独立重试: 一个超时不会连累另一个, 总耗时也从"两个相加"
+      变成"取最慢的那个" —— 这就是以前"自动读取角色/秘纹信息很慢甚至失败"的原因;
+    - 缺 icon 的条目仍然收名字, 头像留空(不再整条丢弃)。
+    """
+    global _fetch_failures
+    _fetch_failures = 0
+    lang = server_config.api_lang()
+    jobs = (
+        (f"characters?lang={lang}", "traveler", "grade"),
+        (f"discs?lang={lang}", "disc", "star"),
+    )
+    results: dict[str, tuple[list[dict], bool]] = {}
+
+    def work(endpoint: str, kind: str, rarity_key: str) -> None:
+        results[endpoint] = _fetch_one(endpoint, kind, rarity_key, progress)
+
+    threads = []
+    for endpoint, kind, rarity_key in jobs:
+        thread = threading.Thread(target=work, args=(endpoint, kind, rarity_key), daemon=True)
+        thread.start()
+        threads.append(thread)
+    for thread in threads:
+        thread.join()
+
+    items: list[dict] = []
+    for endpoint, _kind, _rarity_key in jobs:
+        got, failed = results.get(endpoint, ([], True))
+        if failed:
+            _fetch_failures += 1
+        items.extend(got)
     return items
+
+
+def _icon_fallback_path(kind: str, item_id: int) -> str:
+    """接口没给图标地址时, 按 StellaBase 的资源命名规律拼一个。
+
+    实测规律(国服 2.0.0):
+        旅人 103 → /stella/assets/head_10301_XL.png     (head_<id>01_XL)
+        秘纹 214066 → /stella/assets/outfit_4066_b.png  (outfit_<id-210000>_b)
+    这样即使某个接口超时(拿不到 icon 字段), 只要名字已知也能把头像补齐。
+    """
+    if kind == "traveler":
+        return f"/stella/assets/head_{int(item_id)}01_XL.png"
+    if kind == "disc":
+        return f"/stella/assets/outfit_{int(item_id) - 210000:04d}_b.png"
+    return ""
+
+
+def missing_icon_targets() -> list[dict]:
+    """名称已知但本地缺 PNG 的五星条目 —— 用来在接口失败时按规律补图。"""
+    targets: list[dict] = []
+    for kind, ids in (("traveler", FIVE_STAR_TRAVELERS), ("disc", FIVE_STAR_DISCS)):
+        folder = "travelers" if kind == "traveler" else "discs"
+        for item_id in sorted(ids):
+            path = asset_root() / folder / f"{item_id}.png"
+            if path.is_file() and path.stat().st_size > 0:
+                continue
+            targets.append({"id": item_id, "kind": kind,
+                            "icon": _icon_fallback_path(kind, item_id)})
+    return targets
 
 
 def asset_root() -> Path:
@@ -216,17 +292,47 @@ def _load_seen(state_path: Path | None) -> set[int]:
         return set()
 
 
-def _save_seen(state_path: Path | None, seen: set[int]) -> None:
+def _save_seen(state_path: Path | None, seen: set[int], success: bool = False) -> None:
+    """记住"见过哪些序号"(首次出现提示用), 顺带记下最近一次成功的联网时间。"""
     if state_path is None:
         return
-    import json as _json
     try:
         state_path.parent.mkdir(parents=True, exist_ok=True)
-        state_path.write_text(
-            _json.dumps({"seen": sorted(seen)}, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        payload: dict = {"seen": sorted(seen)}
+        if success:
+            payload["last_success"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        elif state_path.is_file():
+            try:                                        # 失败时保留原来的 last_success
+                previous = json.loads(state_path.read_text(encoding="utf-8"))
+                if isinstance(previous, dict) and previous.get("last_success"):
+                    payload["last_success"] = previous["last_success"]
+            except (OSError, ValueError):
+                pass
+        state_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
         pass
+
+
+def last_success_age_hours(state_path: Path | None) -> float | None:
+    """上次成功联网过了多少小时; 没有记录返回 None。"""
+    if state_path is None or not state_path.is_file():
+        return None
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    raw = payload.get("last_success")
+    if not isinstance(raw, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - moment).total_seconds() / 3600.0
 
 
 def audit_alignment(fetched: list[dict], record_ids: list[int]) -> dict:
@@ -256,6 +362,36 @@ def audit_alignment(fetched: list[dict], record_ids: list[int]) -> dict:
         if item["id"] in other:
             clash.append(dict(item))
     return {"unresolved": unresolved, "misjudged": misjudged, "clash": clash}
+
+
+def _augment_with_banner_names(fetched: list[dict],
+                               progress: ProgressCallback | None = None) -> list[dict]:
+    """角色接口超时/失败时, 用卡池接口的 UP 名单给新角色补名字。
+
+    banners 的 rateUp.fiveStar / fourStar.entries 自带 id + name, 是第二个名称来源:
+    这样"自动读取角色信息"在角色接口抽风时也不会整轮空手而归(头像这次先不下)。
+    """
+    if any(item.get("kind") == "traveler" for item in fetched):
+        return fetched                                  # 角色接口正常, 不用兜底
+    try:
+        from . import official_banners
+        official_banners.fetch_banners(timeout=CATALOG_TIMEOUT)
+        entries = official_banners.rate_up_entries()
+    except Exception:                                   # noqa: BLE001  兜底失败不影响主流程
+        return fetched
+    known = {item["id"] for item in fetched}
+    extra: list[dict] = []
+    for entry in entries:
+        item_id = entry.get("id")
+        if not isinstance(item_id, int) or item_id in known or not is_gacha_item(item_id):
+            continue
+        known.add(item_id)
+        rarity = int(entry.get("rarity") or 5)
+        extra.append({"id": item_id, "kind": "traveler", "name": entry["name"],
+                      "icon": "", "rarity": rarity, "five_star": rarity >= 5})
+    if extra and progress:
+        progress(f"角色接口不可用，改用卡池 UP 名单补了 {len(extra)} 个名字")
+    return fetched + extra
 
 
 def needs_online_lookup(record_ids) -> bool:
@@ -299,35 +435,46 @@ def _sync_once(
     """
     seen = _load_seen(state_path)
     ids = [int(row_id) for row_id in record_ids if str(row_id).lstrip("-").isdigit()]
-    skip_online = bool(ids) and not needs_online_lookup(ids)
     cache_path = _catalog_cache_path(state_path)
+    # 性能规则(用户要求): 记录的序号都已经认识(有名字)时, 不联网查资源。
+    #   - 有认不出的序号 → 必须联网;
+    #   - 全都认识 → 只用本地缓存(离线注册新条目/补图), 一次网络请求都不发;
+    #   - 启动同步(没有 ids) → 缓存 12 小时内就直接用缓存, 过期才联网。
+    # 头像缺失不触发联网: 缺图按命名规律兜底补。
+    unknown = bool(ids) and needs_online_lookup(ids)
+    cached = _load_catalog_cache(cache_path)
+    cache_fresh = _cache_age_hours(cache_path) is not None and _cache_age_hours(cache_path) < CATALOG_CACHE_HOURS
+    if ids:
+        skip_online = not unknown
+    else:
+        skip_online = bool(cached) and cache_fresh
     from_cache = False
     if skip_online:
         if progress:
-            progress("记录的序号都已认识，跳过在线查询")
-        fetched: list[dict] = []
+            progress("序号都已有名字，跳过在线查询" if ids else "目录缓存仍然新鲜，跳过在线查询")
+        fetched: list[dict] = list(cached)
+        from_cache = bool(cached)
         failures = 0
-        audit_before = audit_alignment([], ids)
+        audit_before = audit_alignment([it for it in fetched if it.get("five_star", True)], ids)
     else:
         if progress:
             progress("正在查询名称目录...")
         fetched = _fetch_five_star_catalog(progress)
         failures = fetch_failures()
-    if fetched:
-        _save_catalog_cache(cache_path, fetched)
-    elif not skip_online:
-        # 一路都没查到(离线/超时): 用上次成功的目录, 至少把缺的头像补齐,
-        # 而不是把"没查到"当成"没有缺失"。
-        cached = _load_catalog_cache(cache_path)
-        if cached:
-            fetched = cached
-            from_cache = True
-            if progress:
-                progress(f"在线查询失败，改用上次缓存的目录（{len(cached)} 项）")
-    if not skip_online:
+        if fetched:
+            _save_catalog_cache(cache_path, fetched)
+        else:
+            # 一路都没查到(离线/超时): 用上次成功的目录, 至少把缺的头像补齐,
+            # 而不是把"没查到"当成"没有缺失"。
+            if cached:
+                fetched = list(cached)
+                from_cache = True
+                if progress:
+                    progress(f"在线查询失败，改用上次缓存的目录（{len(cached)} 项）")
         # 对齐校验只吃五星, 否则四星会被当成"星级错位"
         audit_before = audit_alignment([it for it in fetched if it.get("five_star", True)], ids)
 
+    fetched = _augment_with_banner_names(fetched, progress)
     names_by_kind = {"traveler": TRAVELER_NAMES, "disc": DISC_NAMES}
     missing_before = [dict(it) for it in fetched if it["id"] not in names_by_kind[it["kind"]]]
     registered: list[dict] = []
@@ -360,7 +507,21 @@ def _sync_once(
             downloaded.append(dict(item))
         else:
             icon_failed.append(dict(item))
-    _save_seen(state_path, seen)
+    # 第二遍: 名称已知但本地缺头像的条目, 按资源命名规律拼地址再补一次 ——
+    # 某个接口超时(拿不到 icon 字段)时, 这一步仍然能把新秘纹/新角色头像补齐。
+    icon_failed_ids = {item["id"] for item in icon_failed}
+    for target in missing_icon_targets():
+        if target["id"] in icon_failed_ids and not target["icon"]:
+            continue
+        folder = "travelers" if target["kind"] == "traveler" else "discs"
+        path = asset_root() / folder / f"{target['id']}.png"
+        if path.is_file() and path.stat().st_size > 0:
+            continue
+        if _download_icon(f"{STELLABASE_ASSET_API}{target['icon']}", path, progress):
+            downloaded.append(dict(target))
+        else:
+            icon_failed.append(dict(target))
+    _save_seen(state_path, seen, success=bool(fetched) and not from_cache)
     # 对齐校验只针对五星: 四星本来就不是五星, 混进去会全被算成"星级错位"
     five_star_items = [item for item in fetched if item.get("five_star", True)]
     audit_after = audit_alignment(five_star_items, ids)

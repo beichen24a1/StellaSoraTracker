@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..catalog import gacha_item_name, traveler_name, gem_type_name, table_values, format_random_attr
-from ..official_banners import official_pool_info
+from ..official_banners import official_pool_info, pool_display_name
 from ..service import ARCHIVE_FILENAME
 from .constants import (
     GACHA_CATEGORY_ORDER, GACHA_CATEGORY_NAMES, GACHA_CATEGORY_PITY_LIMITS,
@@ -904,14 +904,15 @@ def _tile(pull, color: str) -> QWidget:
 def _banner_card(pool, color: str) -> Card:
     card = Card(pad=16)
     official = official_pool_info(pool.gid)
-    std = {1: "旅人常驻招募", 2: "秘纹常驻招募"}.get(pool.gid, f"卡池 {pool.gid}")
+    std = {1: "旅人常驻招募", 2: "秘纹常驻招募"}.get(pool.gid, pool_display_name(pool.gid))
     top = QHBoxLayout(); top.setSpacing(12)
     left = QVBoxLayout(); left.setSpacing(2)
     name = mk_label((official[0] if official else std), role="body")
     name.setStyleSheet("font-size:16px;font-weight:600;")
+    has_banner_dates = bool(official and (official[1] or official[2]))
     sub = mk_label(
-        (f"{official[1]} - {official[2]} · ID {pool.gid}" if official
-         else f"{_fmt(pool.start_time)} - {_fmt(pool.end_time)}"),
+        (f"{official[1]} - {official[2]} · ID {pool.gid}" if has_banner_dates
+         else f"{_fmt(pool.start_time)} - {_fmt(pool.end_time)} · ID {pool.gid}"),
         role="mutedSmall")
     left.addWidget(name); left.addWidget(sub)
     top.addLayout(left, 1)

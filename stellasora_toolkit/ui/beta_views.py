@@ -10,9 +10,9 @@ from PySide6.QtWidgets import (
 
 from ..catalog import same_item_name, gacha_item_name, is_five_star_item
 from ..gacha_stats import build_banner_stats_with_shared_pity
-from ..official_banners import official_pool_info
+from ..official_banners import is_activity_pool, official_pool_info, pool_display_name
 from .constants import GACHA_CATEGORY_ORDER, GACHA_CATEGORY_NAMES, GACHA_CATEGORY_PITY_LIMITS, OFFICIAL_LIMITED_POOL_INFO
-from .beta_model import overview, categories, is_up
+from .beta_model import overview, categories, is_up, activity_pools
 from .theme import get_palette
 from .widgets import Card, PityBar, AvatarLabel, mk_label, mk_divider, FlowLayout
 from .views import clear_layout, _up_average, _fortune_today, _load_fortune, _save_fortune, _fortune_eval, _luck_rank
@@ -254,6 +254,20 @@ class HomeView(QWidget):
         self._columns = 0
         self._reflow()
         self.col.addLayout(self.grid)
+        activity = activity_pools(records)
+        if activity:
+            total = sum(row['pulls'] for row in activity)
+            stars = sum(row['five_stars'] for row in activity)
+            names = '、'.join(row['name'] for row in activity[:4])
+            more = f' 等 {len(activity)} 个' if len(activity) > 4 else ''
+            line = Card(pad=14)
+            row = QHBoxLayout()
+            row.addWidget(label('活动卡池',14,p.TEXT,True))
+            row.addWidget(label(f'{names}{more} · {total} 抽 / {stars} 五星',12,p.MUTED))
+            row.addStretch()
+            row.addWidget(button('查看活动记录 →',lambda:self.open_records('activity'),'ghost'))
+            line.body().addLayout(row)
+            self.col.addWidget(line)
         if stats.well_banners:
             names = '、'.join(info[3] for gid in stats.well_banners if (info:=official_pool_info(gid)))
             self.col.addWidget(label(f'UP 必得 · 120 抽达成   {names or "已达成的限时卡池"}',12,p.ACCENT))
@@ -328,7 +342,10 @@ class RecordsView(QWidget):
         filters = QHBoxLayout()
         filters.setSpacing(8)
         self.filters = {}
-        for cat,name in [('all','全部卡池')]+[(c,GACHA_CATEGORY_NAMES[c].replace('招募','')) for c in GACHA_CATEGORY_ORDER]:
+        filter_specs = ([('all','全部卡池')]
+                        + [(c,GACHA_CATEGORY_NAMES[c].replace('招募','')) for c in GACHA_CATEGORY_ORDER]
+                        + [('activity','活动卡池')])
+        for cat,name in filter_specs:
             b = button(name,lambda _,c=cat:self.set_filter(c),'filter')
             b.setCheckable(True)
             self.filters[cat] = b
@@ -362,18 +379,22 @@ class RecordsView(QWidget):
         clear_layout(self.content)
         for key,b in self.filters.items(): b.setChecked(key == self.current)
         grouped = categories(records)
-        selected = GACHA_CATEGORY_ORDER if self.current == 'all' else [self.current]
+        activity = self.current == 'activity'
+        selected = GACHA_CATEGORY_ORDER if self.current in ('all', 'activity') else [self.current]
+        keep = is_activity_pool if activity else (lambda _gid: True)
         self.summary.setText('按时间倒序 · 限时卡池垫抽跨池继承 · UP 与歪分别标注')
         if self.all_pulls:
-            self._table(grouped,selected)
+            self._table(grouped, selected, keep)
             return
         count = 0
         p = get_palette()
         for cat in selected:
             pools = build_banner_stats_with_shared_pity(grouped[cat],is_up=is_up if 'limited' in cat else None)
             for pool in pools:
+                if not keep(pool.gid):
+                    continue
                 info = official_pool_info(pool.gid)
-                name = info[0] if info else GACHA_CATEGORY_NAMES[cat] if pool.gid in (1,2) else f'卡池 {pool.gid}'
+                name = info[0] if info else (GACHA_CATEGORY_NAMES[cat] if pool.gid in (1,2) else pool_display_name(pool.gid))
                 match_pool = self.query in name.casefold()
                 hits = [pull for pull in pool.five_stars if not self.query or match_pool or self.query in pull.name.casefold()]
                 if self.query and not hits and not match_pool: continue
@@ -382,7 +403,10 @@ class RecordsView(QWidget):
                 names = QVBoxLayout()
                 names.setSpacing(5)
                 names.addWidget(label(name,17,p.TEXT,True))
-                names.addWidget(label(f'{info[1]} — {info[2]}  ·  {GACHA_CATEGORY_NAMES[cat]}' if info else f'{date(pool.start_time)} — {date(pool.end_time)}  ·  ID {pool.gid}',11,p.MUTED))
+                has_banner_dates = bool(info and (info[1] or info[2]))
+                subtitle = (f'{info[1]} — {info[2]}  ·  {GACHA_CATEGORY_NAMES[cat]}' if has_banner_dates
+                            else f'{date(pool.start_time)} — {date(pool.end_time)}  ·  ID {pool.gid}')
+                names.addWidget(label(subtitle,11,p.MUTED))
                 top.addLayout(names,1)
                 if pool.gid in overview(records).well_banners: top.addWidget(badge('井 · 120 抽达成',p.ACCENT))
                 top.addWidget(badge(f'{pool.total_pulls} 抽 / {len(pool.five_stars)} 五星'))
@@ -409,13 +433,16 @@ class RecordsView(QWidget):
         if not count:
             self.content.addWidget(label('没有符合条件的记录。清除搜索，或先在游戏中打开招募记录再刷新。',13,p.MUTED))
 
-    def _table(self,grouped,selected):
+    def _table(self,grouped,selected,keep=None):
+        keep = keep or (lambda _gid: True)
         rows = []
         for cat in selected:
             for group in sorted(grouped[cat],key=lambda g:g.get('Time',0),reverse=True):
                 gid = group.get('Gid',0)
+                if not keep(gid):
+                    continue
                 info = official_pool_info(gid)
-                pool_name = info[0] if info else GACHA_CATEGORY_NAMES[cat] if gid in (1,2) else f'卡池 {gid}'
+                pool_name = info[0] if info else (GACHA_CATEGORY_NAMES[cat] if gid in (1,2) else pool_display_name(gid))
                 for iid in reversed(group.get('Ids',[])):
                     name = gacha_item_name(iid)
                     if self.query and self.query not in (name+pool_name).casefold(): continue

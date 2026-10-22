@@ -123,6 +123,7 @@ class AllRarityRegistrationTests(unittest.TestCase):
         with mock.patch.object(catalog_sync, "_fetch_five_star_catalog",
                                return_value=[dict(it) for it in self._FETCHED]), \
                 mock.patch.object(catalog_sync, "asset_root", return_value=assets), \
+                mock.patch.object(catalog_sync, "missing_icon_targets", return_value=[]), \
                 mock.patch.object(catalog_sync, "_download_icon", return_value=True):
             return catalog_sync.sync_with_report(directory / "catalog_sync_state.json")
 
@@ -147,6 +148,7 @@ class AllRarityRegistrationTests(unittest.TestCase):
             with mock.patch.object(catalog_sync, "_fetch_five_star_catalog",
                                    return_value=[dict(it) for it in self._FETCHED]), \
                     mock.patch.object(catalog_sync, "asset_root", return_value=assets), \
+                    mock.patch.object(catalog_sync, "missing_icon_targets", return_value=[]), \
                     mock.patch.object(catalog_sync, "_download_icon", return_value=True):
                 appeared, _downloaded = catalog_sync.sync_catalog(
                     directory / "catalog_sync_state.json")
