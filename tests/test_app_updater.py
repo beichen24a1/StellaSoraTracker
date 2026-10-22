@@ -20,6 +20,11 @@ class AppUpdaterTests(unittest.TestCase):
         self.assertTrue(is_newer_version("1.1.0", "1.0.2"))
         self.assertTrue(is_newer_version("v2.0", "1.9.9"))
 
+    def test_region_support_release_updates_both_previous_versions(self):
+        for current in ("1.2.24", "1.2.25"):
+            with self.subTest(current=current):
+                self.assertTrue(is_newer_version("1.2.26", current))
+
     def test_equal_or_older_version_is_not_newer(self):
         self.assertFalse(is_newer_version("1.1", "1.1.0"))
         self.assertFalse(is_newer_version("1.0.9", "1.1.0"))

@@ -64,7 +64,7 @@ HEADER = "#607d98"
 POOL_COLORS = ("#7776aa", "#4d9ba0", "#5d82a9", "#8e6d9c", "#a0804e")
 FIVE_STAR_AVATAR_SIZE = 70
 FIVE_STAR_TILE_IMAGE_SIZE = 78
-APP_VERSION = "1.2.24"
+APP_VERSION = "1.2.26"
 GACHA_CATEGORY_ORDER = (
     CATEGORY_TRAVELER_LIMITED,
     CATEGORY_DISC_LIMITED,
@@ -520,7 +520,7 @@ class StellaSoraApp:
 
         heading("数据与备份")
         paragraph("每次刷新都会合并更新 exports/UID.json，其中 UID 是当前游戏账号的数字标识。官方记录可能只保留最近半年，请定期备份该文件。")
-        paragraph("归档使用从所选进程读取的完整 UID，不按 UID 前缀推断区服；当前仍使用内置中文名称和卡池资料，海外客户端的 UID 与记录读取兼容性需要实际验证。")
+        paragraph("支持国服、日服和台服，归档使用从所选进程读取的完整 UID，不按 UID 前缀推断区服；当前仍使用内置中文名称和卡池资料。")
         paragraph("周年特选招募独立统计，160 抽保底；任意五星都会重置垫抽，不显示 UP / 歪，也不计入旅人限时池的 120 抽井奖励。")
         paragraph("点击“上传抽卡记录到蕾姆”会上传完整 UID.json。同一 UID 在本地首次上传成功时弹出绑定指令，之后不再弹出；设置中始终可以复制指令。现有接口每次上传后仍需向蕾姆发送该指令确认更新，上传成功不代表正式记录已经更新。")
         paragraph("周年记录保留游戏原始分类 6。上传服务需要支持该分类；若服务器拒绝，请联系服务维护者适配，本地归档仍会完整保留。")
