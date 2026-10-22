@@ -1,6 +1,6 @@
 {
-  "version": "1.2.25",
-  "url": "https://github.com/zhenkotone/stellasora_gacha/releases/download/v1.2.25/StellaSoraGachaTool-Portable-1.2.25.zip",
-  "sha256": "c7e6859606f7188dca6b1cf101064443cd02408b0b0ad2156a9124940b2f8941",
-  "notes": "修复 UID 识别过度依赖界面文字的问题：兼容空格、全角冒号和 UTF-8/UTF-16；未找到界面 UID 时回退只读扫描 Lua 账号字段。保留多 UID 拒绝保存、读取前后核验与防混号保护，不沿用旧归档猜测账号。193 项测试通过，台服仍需用户实测确认。请完全退出并重启游戏，打开个人资料及各类招募记录后刷新；更新前建议备份 exports。"
+  "version": "1.2.24",
+  "url": "https://github.com/zhenkotone/stellasora_gacha/releases/download/v1.2.24/StellaSoraGachaTool-Portable-1.2.24.zip",
+  "sha256": "70f26975893721a12eb614c706a499b86456d4f9b6f1b3ca28ceeb82f6124f2f",
+  "notes": "新增周年特选招募：独立统计，160 抽保底，不区分 UP/歪；请在游戏内单独打开其招募记录后刷新。更新尘沙（源初）及新秘纹卡池与图片，补充火垂复刻资料，支持千都世、希娅进入常驻后的识别。修正未出过 UP 时首页垫抽被歪重置的问题。周年原始分类 6 完整保留，蕾姆上传服务需同步支持；本地归档不受影响。换号仍需完全退出并重启游戏，更新前建议备份 exports。"
 }
