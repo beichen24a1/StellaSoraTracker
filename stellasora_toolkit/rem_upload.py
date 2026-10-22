@@ -16,9 +16,10 @@ rem_upload_state.json(同一 UID 以后不再弹)。
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import socket
-import ssl
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -158,70 +159,27 @@ def diagnose(url: str) -> str:
     return ""      # 网络层没问题, 那就是协议/证书层面的事
 
 
-def _legacy_tls_context() -> ssl.SSLContext:
-    """有些老服务器的证书/协议很旧, Python 新默认会拒绝; 这里放宽一次再试。"""
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    try:
-        context.minimum_version = ssl.TLSVersion.TLSv1
-        context.maximum_version = ssl.TLSVersion.TLSv1_2
-        context.set_ciphers("DEFAULT:@SECLEVEL=1")
-    except (ValueError, ssl.SSLError):
-        pass
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    return context
-
-
-def _candidate_endpoints(endpoint: str) -> list[tuple[str, ssl.SSLContext | None, str]]:
-    """按"最可能成功"的顺序排: HTTPS → 老 TLS → 明文 HTTP。
-
-    上游最初就是 http/https 两种都有人跑, 端口 7777 上到底哪种, 只有试了才知道。
-    """
-    parts = urlsplit(endpoint)
-    candidates: list[tuple[str, ssl.SSLContext | None, str]] = [(endpoint, None, "HTTPS")]
-    if parts.scheme == "https":
-        candidates.append((endpoint, _legacy_tls_context(), "HTTPS（兼容旧 TLS）"))
-        candidates.append((endpoint.replace("https://", "http://", 1), None, "HTTP"))
-    return candidates
-
-
 def upload_file(archive_path: Path, *, endpoint: str = UPLOAD_URL,
                 timeout: float = 45.0) -> RemUploadResult:
-    """校验并上传一个 <uid>.json; 失败抛 RemUploadError。
-
-    会依次尝试 HTTPS → 兼容旧 TLS 的 HTTPS → 明文 HTTP（上游端口 7777 上两种协议
-    都出现过）, 全部失败时把体检结果写进错误信息, 方便判断是"域名没了"还是"被墙"。
-    """
+    """校验并上传一个 <uid>.json；沿用上游的 HTTPS 证书校验，不自动降级。"""
     archive_path = Path(archive_path)
     uid = validate_uid(archive_path.stem)
     record = validate_record(archive_path, uid)
     body = build_body(record, uid)
-    network_errors: list[str] = []
-    for candidate, context, label in _candidate_endpoints(endpoint):
-        request = Request(
-            candidate,
-            data=body,
-            method="POST",
-            headers={
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "User-Agent": "StellaSoraGachaTool/1.0",
-            },
-        )
-        try:
-            with urlopen(request, timeout=timeout, context=context) as response:
-                status_code = int(response.status)
-                response_body = response.read()
-            return _finish(status_code, response_body, uid)
-        except HTTPError as error:
-            return _raise_http_error(error, uid)
-        except (URLError, TimeoutError, OSError) as error:
-            network_errors.append(f"{label}: {error}")
-            continue
-    diagnosis = diagnose(endpoint)
-    detail = "；".join(network_errors[:3])
-    hint = diagnosis or "网络层能连通, 但协议/证书握手失败 —— 端口 7777 上可能不是 HTTPS。"
-    raise RemUploadError(f"连接上传服务失败：{hint}\n（尝试过 {len(network_errors)} 种方式：{detail}）")
+    request = Request(
+        endpoint, data=body, method="POST",
+        headers={"Accept": "application/json", "Content-Type": "application/json",
+                 "User-Agent": "StellaSoraGachaTool/1.0"},
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            status_code = int(response.status)
+            response_body = response.read()
+        return _finish(status_code, response_body, uid)
+    except HTTPError as error:
+        return _raise_http_error(error, uid)
+    except (URLError, TimeoutError, OSError) as error:
+        raise RemUploadError(f"连接上传服务失败：{error}") from error
 
 
 def _finish(status_code: int, response_body: bytes, uid: str) -> RemUploadResult:
@@ -257,22 +215,55 @@ def uploaded_uids(directory: Path) -> set[str]:
     return {value for value in values if isinstance(value, str) and UID_RE.fullmatch(value)}
 
 
-def mark_uploaded(directory: Path, uid: str) -> bool:
+def record_fingerprint(archive_path: Path) -> str:
+    uid = validate_uid(archive_path.stem)
+    record = validate_record(archive_path, uid)
+    content = {key: record[key] for key in ('version', 'uid', 'categories')}
+    return hashlib.sha256(json.dumps(content, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def _upload_state(directory: Path) -> dict:
+    try:
+        state = json.loads((Path(directory) / STATE_FILENAME).read_text(encoding='utf-8-sig'))
+        return state if isinstance(state, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def was_uploaded(archive_path: Path, fingerprint: str, endpoint: str) -> bool:
+    hashes = _upload_state(archive_path.parent).get('fingerprints', {})
+    return isinstance(hashes, dict) and hashes.get(endpoint) == fingerprint
+
+
+def mark_uploaded(directory: Path, uid: str, *, fingerprint: str = '', endpoint: str = UPLOAD_URL) -> bool:
     """记下"这个 UID 已上传过"; 返回是否是首次(界面据此决定弹不弹绑定指令)。"""
     uid = validate_uid(uid)
     directory = Path(directory)
     uploaded = uploaded_uids(directory)
-    if uid in uploaded:
+    first = uid not in uploaded
+    if not first and not fingerprint:
         return False
     uploaded.add(uid)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / STATE_FILENAME
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(
-        json.dumps({"version": 1, "uploadedUids": sorted(uploaded)}, ensure_ascii=False, indent=2),
-        encoding="utf-8")
-    temporary.replace(path)
-    return True
+    state = _upload_state(directory)
+    state.update(version=1, uploadedUids=sorted(uploaded))
+    if fingerprint:
+        hashes = state.get('fingerprints')
+        hashes = dict(hashes) if isinstance(hashes, dict) else {}
+        hashes[endpoint] = fingerprint
+        state['fingerprints'] = hashes
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=directory,
+                                         prefix='.rem-upload-', suffix='.tmp', delete=False) as handle:
+            temporary = Path(handle.name)
+            json.dump(state, handle, ensure_ascii=False, indent=2)
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return first
 
 
 def load_endpoint(directory: Path) -> str:

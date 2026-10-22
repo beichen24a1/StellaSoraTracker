@@ -36,6 +36,10 @@ APP_REGISTRY_KEY = r"Software\StellaSoraGachaTool"
 ProgressCallback = Callable[[str], None]
 
 
+class UpdateCancelled(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True)
 class AppUpdate:
     version: str
@@ -150,6 +154,7 @@ def download_update(
     *,
     installer: bool = False,
     retries: int = 3,
+    cancelled: Callable[[], bool] | None = None,
 ) -> Path:
     if installer and not update.has_installer:
         raise ValueError("installer update is unavailable")
@@ -160,6 +165,8 @@ def download_update(
     suffix = Path(urlparse(download_url).path).suffix or ".bin"
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
+        if cancelled and cancelled():
+            raise UpdateCancelled('软件自动更新已关闭')
         fd, temp_name = tempfile.mkstemp(prefix="stellasora-update-", suffix=suffix, dir=target_dir)
         digest = hashlib.sha256()
         try:
@@ -168,6 +175,8 @@ def download_update(
                 total = int(response.headers.get("Content-Length", 0))
                 received = 0
                 while True:
+                    if cancelled and cancelled():
+                        raise UpdateCancelled('软件自动更新已关闭')
                     chunk = response.read(1024 * 1024)
                     if not chunk:
                         break
@@ -178,11 +187,15 @@ def download_update(
                         progress(f"正在下载软件更新 {received * 100 // total}%")
             if digest.hexdigest().lower() != expected_hash:
                 raise ValueError("software update checksum mismatch")
+            if cancelled and cancelled():
+                raise UpdateCancelled('软件自动更新已关闭')
             return Path(temp_name)
         except Exception as err:
             last_error = err
             if os.path.exists(temp_name):
                 os.unlink(temp_name)
+            if isinstance(err, UpdateCancelled):
+                raise
             if attempt < retries:
                 if progress:
                     progress(f"下载失败，正在重试(第 {attempt} 次)")

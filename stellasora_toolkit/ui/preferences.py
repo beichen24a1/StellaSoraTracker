@@ -9,6 +9,7 @@ from .beta_styles import VARIANTS
 
 SETTINGS_FILENAME = 'ui_settings.json'
 DEFAULT_THEME = 'orbit'
+AUTOMATION_DEFAULTS = {'auto_upload': False, 'auto_update': True}
 
 
 def _read_settings(output: Path) -> dict:
@@ -27,11 +28,27 @@ def load_theme(output: Path) -> str:
 def save_theme(output: Path,theme: str) -> bool:
     if not isinstance(theme,str) or theme not in VARIANTS:
         raise ValueError(f'Unknown theme: {theme}')
+    return _save_settings(output, {'theme': theme})
+
+
+def load_automation(output: Path) -> dict[str, bool]:
+    settings = _read_settings(output)
+    return {key: settings[key] if type(settings.get(key)) is bool else default
+            for key, default in AUTOMATION_DEFAULTS.items()}
+
+
+def save_automation(output: Path, key: str, enabled: bool) -> bool:
+    if key not in AUTOMATION_DEFAULTS or type(enabled) is not bool:
+        raise ValueError('Invalid automation preference')
+    return _save_settings(output, {key: enabled})
+
+
+def _save_settings(output: Path, changes: dict) -> bool:
     output = Path(output)
     temporary = None
     try:
         settings = _read_settings(output)
-        settings['theme'] = theme
+        settings.update(changes)
         output.mkdir(parents=True,exist_ok=True)
         with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=output,
                                          prefix='.ui-settings-',suffix='.tmp',delete=False) as handle:

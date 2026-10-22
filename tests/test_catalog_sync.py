@@ -68,6 +68,18 @@ class AuditAlignmentTests(unittest.TestCase):
 
 
 class SyncWithReportTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        for name, options in (
+            ('asset_root', {'return_value': Path(directory.name)}),
+            ('missing_icon_targets', {'return_value': []}),
+            ('_augment_with_banner_names', {'side_effect': lambda items, progress=None: items}),
+        ):
+            patcher = mock.patch('stellasora_toolkit.catalog_sync.' + name, **options)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def tearDown(self):
         _cleanup()
 

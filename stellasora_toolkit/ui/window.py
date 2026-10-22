@@ -10,7 +10,7 @@ from PySide6.QtCore import QEvent, QObject, Qt, QUrl, QTimer, Signal
 from PySide6.QtGui import QIcon, QPixmap, QDesktopServices
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QFrame,QVBoxLayout,
     QHBoxLayout,QStackedWidget,QProgressBar,QButtonGroup,QPushButton,QLineEdit,
-    QComboBox,QFileDialog,QMessageBox)
+    QComboBox,QFileDialog,QMessageBox,QCheckBox)
 from .. import accounts, server_config, app_updater
 from ..catalog import same_item_name
 from ..service import (Snapshot, load_latest_snapshot, active_data_dir, import_gacha_file,
@@ -27,8 +27,9 @@ from .widgets import Card
 from .views import SettingsView, AccountView, HelpView, _style_combo_popup
 from .icons import icon
 from .preferences import load_theme, save_theme
+from .automation import AutomationMixin
 
-class StellaSoraApp(BusinessWindow):
+class StellaSoraApp(AutomationMixin, BusinessWindow):
     update_result = Signal(object)
     update_package = Signal(object)
     # 可以直接把这些文件拖进窗口导入: 网页版/桌面版导出的 <uid>.json、CSV、归档
@@ -55,6 +56,7 @@ class StellaSoraApp(BusinessWindow):
             server_config.init_from(self.output)
             super().__init__(self.output)
             if self._snapshot is None: self._snapshot = Snapshot([])
+        self._init_automation()
         self.snapshot = self._snapshot
         self._mount_shell()
         self._ui_ready = True
@@ -67,6 +69,7 @@ class StellaSoraApp(BusinessWindow):
         self.setWindowIcon(QIcon(str(Path(__file__).resolve().parents[2]/'assets/app_icon.ico')))
         self.setMinimumSize(960,680)
         self.status('演示模式 · 切换本地后可管理账号、UID 和真实归档。' if demo else '已加载本地账号归档。')
+        self._schedule_update_check()
 
     def _make_views(self):
         self._settings = SettingsView({
@@ -156,6 +159,38 @@ class StellaSoraApp(BusinessWindow):
             b = button(text,fn); b.setEnabled(not self.demo); row.addWidget(b)
         row.addStretch(); actions.body().addLayout(row)
         self._settings._col.insertWidget(3,actions)
+        self._add_automation_card()
+
+    def _add_automation_card(self):
+        p = palette(self.variant)
+        card = Card(pad=22); card.setObjectName('AutomationSettings')
+        card.add(label('自动上传与更新',16,p.TEXT,True))
+        self.automation_checks = {}
+        for key, title, description in (
+            ('auto_upload', '抓取或导入新记录后自动上传到蕾姆',
+             '默认关闭。上传完整 UID 与抽卡记录；已成功上传且没有变化的记录会跳过。\n'
+             '服务地址与「上传与分享」一致。上传后仍需向蕾姆发送绑定指令确认更新。'),
+            ('auto_update', '自动检查并下载软件更新',
+             '默认开启。发行版启动及每 6 小时检查本项目更新，后台下载并校验，空闲时提示重启安装。\n'
+             '关闭后停止自动检查与下载；手动检查更新仍可使用。源码与演示模式不自动更新。'),
+        ):
+            checkbox = QCheckBox(title)
+            checkbox.setChecked(self.automation[key])
+            checkbox.setEnabled(not self.demo)
+            checkbox.toggled.connect(lambda enabled, selected=key: self._set_automation(selected, enabled))
+            self.automation_checks[key] = checkbox
+            card.add(checkbox)
+            hint = label(description,11,p.MUTED)
+            hint.setWordWrap(True)
+            card.add(hint)
+        self.update_status = label('更新状态：等待检查。' if self.automation['auto_update']
+                                   else '自动更新已关闭；仍可手动检查更新。',11,p.MUTED)
+        self.update_status.setWordWrap(True)
+        card.add(self.update_status)
+        self.restart_update_button = button('重启并安装已下载更新',self._restart_for_update,'primary')
+        self.restart_update_button.hide()
+        card.add(self.restart_update_button)
+        self._settings._col.insertWidget(4,card)
 
     def change_variant(self,variant):
         if variant not in VARIANTS: return
@@ -200,6 +235,10 @@ class StellaSoraApp(BusinessWindow):
         if not self._ui_ready: return super()._apply_snapshot(snap)
         self._snapshot = self.snapshot = snap
         self.render()
+
+    def _on_snapshot(self,snap):
+        super()._on_snapshot(snap)
+        self._queue_auto_upload(getattr(snap,'share_file',None))
 
     def _load_latest(self):
         if not self._ui_ready: return super()._load_latest()
@@ -443,6 +482,7 @@ class StellaSoraApp(BusinessWindow):
                 if not self._backup_archive(uid):
                     continue
                 imported.append(import_gacha_file(self.output, source))
+                self._queue_auto_upload(imported[-1].share_file)
             except (OSError, ValueError, TypeError) as exc:
                 failed.append(f'{source.name}: {exc}')
         if imported:
@@ -459,51 +499,12 @@ class StellaSoraApp(BusinessWindow):
 
     import_archive = _import_data
 
-    def _check_update(self):
-        if self.demo or self._busy: return
-        urls = app_updater.update_urls()
-        if not urls:
-            QMessageBox.information(self,'检查更新','未配置 GitHub 更新清单，请设置 STELLASORA_UPDATE_MANIFEST_GITHUB。')
-            return
-        self._set_busy(True)
-        self.status('正在检查 GitHub 软件更新…')
-        def work():
-            try: result = app_updater.check_for_update(urls,APP_VERSION)
-            except Exception as exc: result = exc
-            self.update_result.emit(result)
-        threading.Thread(target=work,daemon=True).start()
-
-    def _update_checked(self,result):
-        self._set_busy(False)
-        if isinstance(result,Exception): self.status(f'检查更新失败：{result}'); return
-        if result is None: self.status(f'当前已是最新版 v{APP_VERSION}。'); return
-        self.status(f'发现新版本 v{result.version}')
-        if not getattr(sys,'frozen',False):
-            if QMessageBox.question(self,'发现新版本',f'v{result.version}\n{result.notes}\n\n打开下载地址？')==QMessageBox.Yes:
-                QDesktopServices.openUrl(QUrl(result.url))
-            return
-        if QMessageBox.question(self,'软件更新',f'v{result.version}\n{result.notes}\n\n下载并安装更新？')!=QMessageBox.Yes: return
-        self._set_busy(True)
-        def work():
-            try:
-                package = app_updater.download_update(result,self.output/'updates',progress=self._bridge.progress.emit)
-            except Exception as exc: package = exc
-            self.update_package.emit(package)
-        threading.Thread(target=work,daemon=True).start()
-
-    def _install_update(self,package):
-        self._set_busy(False)
-        if isinstance(package,Exception): self.status(f'下载更新失败：{package}'); return
-        try:
-            app_updater.launch_update_installer(package,Path(sys.executable))
-        except (OSError,ValueError) as exc:
-            self.status(f'启动更新失败：{exc}'); return
-        QTimer.singleShot(0,self.close)
-
     def closeEvent(self,event):
         if self._busy:
             self.status('正在完成当前操作，请稍后关闭窗口。'); event.ignore()
-        else: event.accept()
+        else:
+            self._stop_automation()
+            event.accept()
 
     def brand(self):
         from PySide6.QtWidgets import QLabel

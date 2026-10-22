@@ -148,7 +148,7 @@ class SyncCatalogFilterTests(unittest.TestCase):
             ],
         }
 
-        def fake_read(url, progress=None, timeout=20.0):
+        def fake_read(url, progress=None, timeout=20.0, attempts=1):
             for suffix, rows in payloads.items():
                 if url.endswith(suffix):
                     return json.dumps(rows).encode("utf-8")

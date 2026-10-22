@@ -131,6 +131,15 @@ class FetchFailureFlagTests(unittest.TestCase):
 class CatalogCacheFallbackTests(unittest.TestCase):
     _FETCHED = [{"id": 139, "kind": "traveler", "name": "艾蕾", "icon": "/stella/assets/Eileen.png"}]
 
+    def setUp(self):
+        for name, options in (
+            ('missing_icon_targets', {'return_value': []}),
+            ('_augment_with_banner_names', {'side_effect': lambda items, progress=None: items}),
+        ):
+            patcher = mock.patch.object(catalog_sync, name, **options)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_successful_fetch_writes_the_cache(self):
         with temp_workdir("cache_write") as directory:
             with mock.patch.object(catalog_sync, "_fetch_five_star_catalog",

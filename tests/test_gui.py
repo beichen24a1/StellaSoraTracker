@@ -11,9 +11,11 @@ class GuiTests(unittest.TestCase):
         self.assertFalse(same_item_name("归途", "鹿鸣"))
 
     def test_pity_colors_use_green_yellow_and_red_ranges(self):
-        self.assertEqual(_pity_color(30), "#2e9e6b")
-        self.assertEqual(_pity_color(31), "#d9a62a")
-        self.assertEqual(_pity_color(61), "#c1503d")
+        from stellasora_toolkit.ui.theme import get_palette
+        palette = get_palette()
+        self.assertEqual(_pity_color(30), palette.OK)
+        self.assertEqual(_pity_color(31), palette.WARN)
+        self.assertEqual(_pity_color(61), palette.DANGER)
 
     def test_limited_pool_up_average_ignores_off_banner_five_stars(self):
         pool = PoolStats(

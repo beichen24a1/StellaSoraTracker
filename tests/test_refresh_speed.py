@@ -34,6 +34,15 @@ def temp_workdir(name: str):
 
 
 class OnlineLookupDecisionTests(unittest.TestCase):
+    def setUp(self):
+        for name, options in (
+            ('missing_icon_targets', {'return_value': []}),
+            ('_augment_with_banner_names', {'side_effect': lambda items, progress=None: items}),
+        ):
+            patcher = mock.patch.object(catalog_sync, name, **options)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_known_ids_do_not_need_online_lookup(self):
         # 110/214001 都是静态表里认识的五星
         self.assertFalse(catalog_sync.needs_online_lookup([110, 132, 214001, 139]))

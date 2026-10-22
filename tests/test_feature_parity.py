@@ -151,6 +151,7 @@ class FeatureParityTests(unittest.TestCase):
         import time
         update = AppUpdate(version='9.0.0',url='https://example.com/update.zip',sha256='0'*64,notes='test')
         package = self.root/'update.zip'
+        package.write_bytes(b'fixture update')
         with patch('stellasora_toolkit.ui.window.sys.frozen',True,create=True), \
              patch('stellasora_toolkit.ui.window.QMessageBox.question',return_value=QMessageBox.Yes), \
              patch('stellasora_toolkit.ui.window.app_updater.download_update',return_value=package) as download, \

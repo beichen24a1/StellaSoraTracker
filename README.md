@@ -2,9 +2,20 @@
 
 ## 下载 Windows 版本
 
-在 [v1.2.26 发布页](https://github.com/sfjdk/StellaSoraTracker/releases/tag/v1.2.26) 下载 `StellaSoraGachaTool-1.2.26-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份旧目录中的 `exports`，再将其复制到新版程序旁；不要只复制单个 exe。
+在 [最新发布页](https://github.com/sfjdk/StellaSoraTracker/releases/latest) 下载 Windows 免安装 ZIP，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份旧目录中的 `exports`，再将其复制到新版程序旁；不要只复制单个 exe。
 
-本次更新与校验说明见 [v1.2.26 更新日志](docs/releases/v1.2.26.md)。
+已发布版本的更新与校验说明见 [v1.2.26 更新日志](docs/releases/v1.2.26.md)。下面的自动上传与更新功能已加入源码，等待用户明确要求后再发版。
+
+## 自动上传与软件更新
+
+在「数据与设置 → 自动上传与更新」控制两个独立开关，选择会随主题偏好一起保存在 `exports/ui_settings.json`，切换主题或账号后仍然有效。
+
+- **自动上传（默认关闭）**：成功抓取或导入记录后，将对应 UID 的完整归档上传到蕾姆。使用与 [zhenkotone/stellasora_gacha](https://github.com/zhenkotone/stellasora_gacha/blob/main/stellasora_toolkit/upload.py) 一致的接口 `https://yostar.772077.xyz:7777/stellasora/api/gacha/upload`，不需要登录或 Token。按账号和上传地址记录成功指纹，未变化的归档不重复上传；上传失败不会改动本地归档，下次抓取或导入时可再次尝试。关闭后仍可在「上传与分享」手动上传。
+- **自动更新（默认开启）**：Windows 发行版启动及每 6 小时检查**本项目**的 GitHub 更新，后台下载并校验 SHA-256；抓取或上传进行时不会安装，空闲后提示重启。选择暂不重启后，可在设置页点击「重启并安装已下载更新」。关闭开关会停止后续自动检查、取消自动下载及待安装提示，手动检查不受影响。源码和演示模式不自动更新。
+
+上传成功表示归档已暂存，**每次仍需向蕾姆发送「星塔抽卡绑定 UID …」指令确认正式更新**；指令显示在「上传与分享」中。自动上传不会代发绑定指令。
+
+开发验证：`./.venv/Scripts/python.exe tools/run_tests.py`，Qt 测试在离屏模式运行并及时释放测试窗口。
 
 ## UI Beta 预览
 
@@ -104,12 +115,13 @@
 | 账号切换、新建、重命名、合并、可恢复删除 | 数据与设置 → 账号 |
 | 手填或读取 UID、导出 `<UID>.json` | 数据与设置 → UID 与分享文件 |
 | JSON/CSV 导入、导出、备份与检查更新 | 数据与设置 |
-| 服务器地址、注册、登录、退出、上传与打开网页 | 网页版账户 |
+| 上传到蕾姆、复制绑定指令、打开手动上传页 | 上传与分享 |
+| 自动上传与软件自动更新开关 | 数据与设置 → 自动上传与更新 |
 | 动态卡池、名称与头像补全、缺失校验 | 启动及抓取抽卡记录时自动执行 |
 
-导入前备份目标账号归档，备份失败会停止导入。重新打开程序或切换账号时优先加载完整归档，不使用旧的时间戳导出覆盖导入后的记录。主题切换保留当前账号、记录筛选及 UID、登录表单的未保存输入。
+导入前备份目标账号归档，备份失败会停止导入。重新打开程序或切换账号时优先加载完整归档，不使用旧的时间戳导出覆盖导入后的记录。主题切换保留当前账号、记录筛选及 UID 的未保存输入。
 
-软件更新仅使用 GitHub 清单，通过 `STELLASORA_UPDATE_MANIFEST_GITHUB` 配置地址。源码运行可打开新版下载地址；打包版支持下载、校验后启动更新器。
+软件更新仅使用本项目 GitHub 清单，可通过 `STELLASORA_UPDATE_MANIFEST_GITHUB` 覆盖地址。源码运行可手动打开新版下载地址；打包版支持自动检查、下载、校验后提示重启安装。
 
 ## 使用建议
 

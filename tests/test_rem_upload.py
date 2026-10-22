@@ -195,6 +195,35 @@ class UploadFileTests(UploadCase):
                 rem_upload.upload_file(path)
         self.assertIn("连接上传服务失败", str(ctx.exception))
 
+    def test_tls_failure_does_not_retry_insecure_or_plain_http(self):
+        import ssl
+        path = self.write_archive()
+        with mock.patch('stellasora_toolkit.rem_upload.urlopen',
+                        side_effect=ssl.SSLCertVerificationError('invalid certificate')) as request:
+            with self.assertRaises(rem_upload.RemUploadError):
+                rem_upload.upload_file(path)
+        request.assert_called_once()
+        self.assertEqual(request.call_args.args[0].full_url, rem_upload.UPLOAD_URL)
+        self.assertNotIn('context', request.call_args.kwargs)
+
+    def test_fingerprint_ignores_export_time_but_includes_records_and_endpoint(self):
+        path = self.write_archive()
+        fingerprint = rem_upload.record_fingerprint(path)
+        self.assertTrue(rem_upload.mark_uploaded(path.parent, path.stem,
+                                                fingerprint=fingerprint))
+        record = json.loads(path.read_text())
+        record['updatedAt'] = 'a new export time'
+        path.write_text(json.dumps(record))
+        self.assertEqual(rem_upload.record_fingerprint(path), fingerprint)
+        self.assertTrue(rem_upload.was_uploaded(path, fingerprint, rem_upload.UPLOAD_URL))
+        self.assertFalse(rem_upload.was_uploaded(path, fingerprint, 'https://other.test/upload'))
+        record['categories']['1'][0]['Ids'].append(162)
+        path.write_text(json.dumps(record))
+        changed = rem_upload.record_fingerprint(path)
+        self.assertNotEqual(changed, fingerprint)
+        self.assertFalse(rem_upload.mark_uploaded(path.parent, path.stem, fingerprint=changed))
+        self.assertTrue(rem_upload.was_uploaded(path, changed, rem_upload.UPLOAD_URL))
+
 
 class FirstUploadStateTests(UploadCase):
     def test_first_upload_then_silent(self):

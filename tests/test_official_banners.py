@@ -29,12 +29,12 @@ class ParseBannersTests(unittest.TestCase):
         self.assertIn(10140, parsed)
         self.assertEqual(parsed[10140], ("完美无缺的最终解", "2026-06-02", "2026-06-23", "斯帕克拉"))
 
-    def test_cn_permanent_banner_filtered(self):
+    def test_cn_permanent_banner_keeps_metadata_without_up(self):
         banners = [{"id": 1, "name": "常驻招募", "bannerType": "常驻招募"}]
-        self.assertEqual(parse_banners(banners), {})
+        self.assertEqual(parse_banners(banners), {1: ('常驻招募', '', '', '')})
 
-    def test_en_permanent_banner_filtered(self):
-        """国际服文案是英文: Permanent ... Banner 也要按常驻过滤, 与国服行为一致。"""
+    def test_en_permanent_banner_keeps_metadata_without_up(self):
+        """常驻池保留名称与时间，但不设置 UP，与国服行为一致。"""
         banners = [
             {"id": 10137, "name": "With Graceful Steps", "bannerType": "Limited Trekker Banner",
              "rateUp": {"fiveStar": {"entries": [{"id": 137, "name": "Eleanor"}]}}},
@@ -43,7 +43,7 @@ class ParseBannersTests(unittest.TestCase):
         parsed = parse_banners(banners)
         self.assertIn(10137, parsed)
         self.assertEqual(parsed[10137][3], "Eleanor")
-        self.assertNotIn(1, parsed)
+        self.assertEqual(parsed[1], ('Standard', '', '', ''))
 
     def test_invalid_rows_skipped(self):
         banners = [{"name": "no id"}, {"id": "abc"}, None, {"id": 42}]

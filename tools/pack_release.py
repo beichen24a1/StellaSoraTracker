@@ -36,6 +36,7 @@ EXCLUDED_PARTS = {"exports", "accounts", "backups", "logs", "__pycache__"}
 EXCLUDED_NAMES = {
     "uid.json", "account.json", "accounts.json", "ui_settings.json", "fortune.json",
     "server.json", "stellasora_gacha_archive.json", "crash.log",
+    "rem_upload_state.json", "rem_upload_endpoint.txt",
 }
 
 
