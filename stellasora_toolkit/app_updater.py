@@ -12,13 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+from .project import UPDATE_MANIFEST_URL as DEFAULT_MANIFEST_URL
 
 
 # 更新渠道只有 GitHub 一个(不接 Gitee)。
 # 清单默认从本仓库 main 分支的 app_update.json 读, 环境变量可覆盖(测试/镜像用):
 #   STELLASORA_UPDATE_MANIFEST_GITHUB : 更新清单完整 URL
 UPDATE_MANIFEST_ENV_VAR = "STELLASORA_UPDATE_MANIFEST_GITHUB"
-DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/sfjdk/StellaSoraTracker/main/app_update.json"
 
 
 def update_urls() -> list[str]:

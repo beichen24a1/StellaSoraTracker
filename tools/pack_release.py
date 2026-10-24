@@ -27,12 +27,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from stellasora_toolkit.ui.constants import APP_VERSION  # noqa: E402
+from stellasora_toolkit.project import GITHUB_REPOSITORY  # noqa: E402
 
 SRC = ROOT / "release" / "github" / "StellaSoraGachaTool"
 RELEASE_DIR = ROOT / "release"
 MANIFESTS = (ROOT / "app_update.json", ROOT / "app_update_github.json")
-REPO = "sfjdk/StellaSoraTracker"
-EXCLUDED_PARTS = {"exports", "accounts", "backups", "logs", "__pycache__"}
+REPO = GITHUB_REPOSITORY
+EXCLUDED_PARTS = {"exports", "accounts", "account_sessions", "backups", "logs", "__pycache__"}
 EXCLUDED_NAMES = {
     "uid.json", "account.json", "accounts.json", "ui_settings.json", "fortune.json",
     "server.json", "stellasora_gacha_archive.json", "crash.log",

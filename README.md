@@ -1,17 +1,19 @@
 # 星塔旅人抽卡记录工具
 
+本仓库整合自 [sfjdk/StellaSoraTracker](https://github.com/sfjdk/StellaSoraTracker) 和 [zhenkotone/stellasora_gacha](https://github.com/zhenkotone/stellasora_gacha)，保留双方提交历史及上游来源记录。
+
 ## 下载 Windows 版本
 
-在 [最新发布页](https://github.com/sfjdk/StellaSoraTracker/releases/latest) 下载 Windows 免安装 ZIP，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份旧目录中的 `exports`，再将其复制到新版程序旁；不要只复制单个 exe。
+在 [最新发布页](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 下载 Windows 免安装 ZIP，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份旧目录中的 `exports`；不要只复制单个 exe。原 sfjdk 版可复制完整 `exports` 到新版程序旁；原 zhenkotone 版的 `<UID>.json` 可在「数据与设置」导入或拖入窗口，原文件请保留。
 
-已发布版本的更新与校验说明见 [v1.2.26 更新日志](docs/releases/v1.2.26.md)。下面的自动上传与更新功能已加入源码，等待用户明确要求后再发版。
+本次更新与校验说明见 [v1.3.0 更新日志](docs/releases/v1.3.0.md)。
 
 ## 自动上传与软件更新
 
 在「数据与设置 → 自动上传与更新」控制两个独立开关，选择会随主题偏好一起保存在 `exports/ui_settings.json`，切换主题或账号后仍然有效。
 
 - **自动上传（默认关闭）**：成功抓取或导入记录后，将对应 UID 的完整归档上传到蕾姆。使用与 [zhenkotone/stellasora_gacha](https://github.com/zhenkotone/stellasora_gacha/blob/main/stellasora_toolkit/upload.py) 一致的接口 `https://yostar.772077.xyz:7777/stellasora/api/gacha/upload`，不需要登录或 Token。按账号和上传地址记录成功指纹，未变化的归档不重复上传；上传失败不会改动本地归档，下次抓取或导入时可再次尝试。关闭后仍可在「上传与分享」手动上传。
-- **自动更新（默认开启）**：Windows 发行版启动时检查更新，没有每 6 小时定时检查。发现新版先询问是否下载，完成 SHA-256 校验后再询问是否重启安装；抓取或上传进行时会等待空闲。关闭开关会停止自动检查、取消自动下载及待安装提示，手动检查不受影响。源码模式不自动更新。共同仓库的更新源与渠道尚待确定，本次没有修改现有清单。
+- **自动更新（默认开启）**：Windows 发行版启动时检查更新，没有每 6 小时定时检查。发现新版先询问是否下载，完成 SHA-256 校验后再询问是否重启安装；抓取或上传进行时会等待空闲。关闭开关会停止自动检查、取消自动下载及待安装提示，手动检查不受影响。源码模式不自动更新。发行更新统一指向本仓库的 GitHub 清单，可通过环境变量覆盖。
 
 上传成功表示归档已暂存，**每次仍需向蕾姆发送「星塔抽卡绑定 UID …」指令确认正式更新**；指令显示在「上传与分享」中。自动上传不会代发绑定指令。
 
@@ -39,7 +41,7 @@
 
 ## 软件是做什么的
 
-本地整合分支按 [人工判断记录](docs/integration-decisions.json) 实施，引用的上游文件和原始哈希见 [上游来源记录](docs/upstream-imports.json)。8 项待议和 1 项暂缓保持现状：归档目录、内存解析策略、资源人工核对、绑定提示、更新渠道与清单、构建方案、许可证和版本号，以及全局导航。未修改版本号或更新清单，也未发版。
+功能取舍按 [人工判断记录](docs/integration-decisions.json) 实施，引用的上游文件和原始哈希见 [上游来源记录](docs/upstream-imports.json)。本版发行号和 GitHub 更新源已按实际发布仓库统一；归档目录、内存解析策略、资源人工核对、绑定提示、构建方案、许可证和全局导航保持现状，等待共同讨论。
 
 ## 读取与归档保护
 

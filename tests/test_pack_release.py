@@ -5,6 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools import pack_release
+from stellasora_toolkit.project import GITHUB_REPOSITORY
+import json
 
 
 class ReleasePackagingTests(unittest.TestCase):
@@ -18,6 +20,7 @@ class ReleasePackagingTests(unittest.TestCase):
                 "exports/accounts/100123456/100123456.json", "UID.JSON",
                 "accounts.json", "ui_settings.json", "fortune.json", "100123456.json",
                 "crash.log", "logs/session.log", "stellasora_gacha_archive.json",
+                "account_sessions/20-1000.json", "account_sessions/20-1000.blocked",
             )
             for name in files:
                 path = source / name
@@ -51,3 +54,13 @@ class ReleasePackagingTests(unittest.TestCase):
             self.assertEqual(prior.read_bytes(), b"prior release")
             self.assertEqual(current.read_bytes(), b"current release")
             self.assertEqual(list(root.glob("*.part")), [])
+
+    def test_manifest_download_url_uses_distribution_repository(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / 'app_update.json'
+            manifest.write_text('{}', encoding='utf-8')
+            pack_release.update_manifest(manifest, '1.3.0', 'StellaSoraGachaTool-1.3.0-win64.zip', 'a'*64, 'release')
+            data = json.loads(manifest.read_text(encoding='utf-8'))
+            self.assertEqual(data['url'], f'https://github.com/{GITHUB_REPOSITORY}/releases/download/v1.3.0/StellaSoraGachaTool-1.3.0-win64.zip')
+            self.assertEqual(data['version'], '1.3.0')
+            self.assertEqual(data['sha256'], 'a'*64)
