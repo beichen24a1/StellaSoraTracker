@@ -8,7 +8,7 @@ from pathlib import Path
 from .beta_styles import VARIANTS
 
 SETTINGS_FILENAME = 'ui_settings.json'
-DEFAULT_THEME = 'orbit'
+DEFAULT_THEME = 'sky'
 AUTOMATION_DEFAULTS = {'auto_upload': False, 'auto_update': True}
 
 
