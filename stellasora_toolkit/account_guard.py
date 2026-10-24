@@ -99,6 +99,10 @@ def check_account_records(output_dir: Path, uid: str, categories: dict) -> None:
     for directory in (root / 'accounts').glob('*'):
         if not directory.is_dir() or '.deleted_' in directory.name:
             continue
+        from . import archive_layout
+        _, owner, _ = archive_layout.context(directory)
+        if owner and archive_layout.migrated(directory, owner) and (root / f'{owner}.json').is_file():
+            continue  # Preserved A files are backups, no longer live account data.
         archive = directory / 'stellasora_gacha_archive.json'
         if archive.is_file():
             paths.add(archive)

@@ -79,7 +79,7 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
             'account_switch':self._switch_account,'account_new':self._new_account,
             'account_rename':self._rename_account,'account_merge':self._merge_account,
             'account_remove':self._remove_account})
-        self._settings.build('exports/accounts/<账号>/stellasora_gacha_archive.json','演示记录')
+        self._settings.build('exports/<UID>.json','演示记录')
         self._settings.set_accounts([('demo','演示账号')],'demo')
         self._settings.set_account_state('演示模式 · 不写入账号清单')
         self._settings.set_uid_state('切换本地后可填写或读取 UID，并生成分享文件')
@@ -251,7 +251,8 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
         self._settings.set_summary(f'{stats.total_pulls:,} 抽 · {stats.total_five} 个五星 · {sum(s is not None for s in stats.category_stats.values())}/5 类卡池\n归档批次 {len(self.snapshot.gacha)} · {dates}')
         if not self.demo:
             self._refresh_account_picker(); self._refresh_uid_state(); self._refresh_account_view(); self._refresh_server_labels()
-            self._settings.set_archive_path(str(active_data_dir(self.output)/'stellasora_gacha_archive.json'))
+            from ..service import active_archive_path
+            self._settings.set_archive_path(str(active_archive_path(self.output)))
 
     def _apply_snapshot(self,snap):
         if not self._ui_ready: return super()._apply_snapshot(snap)
@@ -474,7 +475,10 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
                 target = current
         if target is None:
             return True
-        archive = accounts.data_dir(self.output, target.key) / 'stellasora_gacha_archive.json'
+        from .. import archive_layout
+        archive = archive_layout.archive_path(accounts.data_dir(self.output, target.key))
+        if not archive.exists():
+            archive = accounts.data_dir(self.output, target.key) / archive_layout.LEGACY_NAME
         if not archive.exists():
             return True
         backup = self.output / 'backups' / f'{target.key}_{datetime.now():%Y%m%d_%H%M%S_%f}.json'

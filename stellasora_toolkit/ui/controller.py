@@ -33,7 +33,7 @@ from ..service import (
     load_manual_uid, export_share_for_uid,
     normalize_uid, probe_running_groups, read_game_uid,
     refresh_share_file, save_manual_uid, merge_accounts,
-    ARCHIVE_FILENAME, Snapshot,
+    ARCHIVE_FILENAME, Snapshot, active_archive_path,
 )
 from .constants import (
     GACHA_CATEGORY_ORDER, GACHA_CATEGORY_NAMES, APP_VERSION,
@@ -131,7 +131,7 @@ class StellaSoraWindow(QMainWindow):
 
         accounts.ensure_ready(self._output_dir)
         self._settings.build(
-            str(accounts.active_data_dir(self._output_dir) / ARCHIVE_FILENAME),
+            str(active_archive_path(self._output_dir)),
             "尚未加载本地归档",
             effective_uid(self._output_dir),
         )
@@ -873,7 +873,7 @@ class StellaSoraWindow(QMainWindow):
 
     def _copy_archive_path(self) -> None:
         QApplication.clipboard().setText(
-            str(accounts.active_data_dir(self._output_dir) / ARCHIVE_FILENAME))
+            str(active_archive_path(self._output_dir)))
         self._status.setText("归档路径已复制")
 
     # ---------------- UID / 分享文件 ----------------
@@ -1049,8 +1049,7 @@ class StellaSoraWindow(QMainWindow):
             f"已合并进本地归档（现有 {result.total_pulls} 抽 / {result.total_groups} 组）{uid_text}{share_text}")
 
     def _backup_archive(self) -> None:
-        data_dir = accounts.active_data_dir(self._output_dir)
-        ap = data_dir / ARCHIVE_FILENAME
+        ap = active_archive_path(self._output_dir)
         if not ap.exists():
             QMessageBox.information(self, "创建备份", "尚未找到本地招募归档,请先抓取抽卡记录。")
             return

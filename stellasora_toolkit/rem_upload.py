@@ -238,15 +238,37 @@ def _upload_state(directory: Path) -> dict:
         return {}
 
 
+def _state_directory(directory: Path, uid: str) -> Path:
+    """Keep existing per-account upload receipts when the archive moves to root."""
+    directory = Path(directory)
+    root = directory.parent.parent if directory.parent.name == 'accounts' else directory
+    try:
+        state = json.loads((root / 'accounts.json').read_text('utf-8'))
+        for row in state['accounts']:
+            key = row.get('key')
+            if row.get('uid') == uid and isinstance(key, str) and re.fullmatch(r'[0-9A-Za-z_-]{1,64}', key):
+                return root / 'accounts' / key
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return directory
+
+
 def was_uploaded(archive_path: Path, fingerprint: str, endpoint: str) -> bool:
-    hashes = _upload_state(archive_path.parent).get('fingerprints', {})
-    return isinstance(hashes, dict) and hashes.get(endpoint) == fingerprint
+    uid = validate_uid(archive_path.stem)
+    state = _upload_state(_state_directory(archive_path.parent, uid))
+    per_uid = state.get('fingerprintsByUid', {})
+    hashes = per_uid.get(uid, {}) if isinstance(per_uid, dict) else {}
+    if isinstance(hashes, dict) and endpoint in hashes:
+        return hashes[endpoint] == fingerprint
+    # Legacy endpoint-only states are safe only if they identify this single UID.
+    hashes = state.get('fingerprints', {})
+    return state.get('uploadedUids') == [uid] and isinstance(hashes, dict) and hashes.get(endpoint) == fingerprint
 
 
 def mark_uploaded(directory: Path, uid: str, *, fingerprint: str = '', endpoint: str = UPLOAD_URL) -> bool:
     """记下"这个 UID 已上传过"; 返回是否是首次(界面据此决定弹不弹绑定指令)。"""
     uid = validate_uid(uid)
-    directory = Path(directory)
+    directory = _state_directory(Path(directory), uid)
     uploaded = uploaded_uids(directory)
     first = uid not in uploaded
     if not first and not fingerprint:
@@ -257,10 +279,13 @@ def mark_uploaded(directory: Path, uid: str, *, fingerprint: str = '', endpoint:
     state = _upload_state(directory)
     state.update(version=1, uploadedUids=sorted(uploaded))
     if fingerprint:
-        hashes = state.get('fingerprints')
+        per_uid = state.get('fingerprintsByUid')
+        per_uid = dict(per_uid) if isinstance(per_uid, dict) else {}
+        hashes = per_uid.get(uid)
         hashes = dict(hashes) if isinstance(hashes, dict) else {}
         hashes[endpoint] = fingerprint
-        state['fingerprints'] = hashes
+        per_uid[uid] = hashes
+        state['fingerprintsByUid'] = per_uid
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=directory,

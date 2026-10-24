@@ -96,7 +96,7 @@ class StrictCaptureTests(unittest.TestCase):
 
     def test_damaged_active_archive_is_not_silently_overwritten(self):
         first=self.read()
-        archive=first.share_file.parent/service.ARCHIVE_FILENAME
+        archive=first.share_file
         archive.write_bytes(b'{broken')
         with self.assertRaises(AccountSafetyError): self.read()
         self.assertEqual(archive.read_bytes(),b'{broken')
@@ -118,8 +118,10 @@ class StrictCaptureTests(unittest.TestCase):
         source=accounts.create(self.root,uid='100000002')
         service._write_archive(accounts.data_dir(self.root,target.key),{6:[group()]},uid=target.uid)
         for source_uid in ('100000002',''):
-            service._write_archive(accounts.data_dir(self.root,source.key),{6:[group(timestamp=1792500001)]},uid=source_uid)
-            before={p:p.read_bytes() for p in self.root.rglob(service.ARCHIVE_FILENAME)}
+            # Corrupt/ambiguous ownership is a disk fixture, never produced by the writer.
+            archive=self.root/f'{source.uid}.json'
+            archive.write_text(json.dumps(service._archive_payload({6:[group(timestamp=1792500001)]},uid=source_uid)))
+            before={p:p.read_bytes() for p in self.root.rglob('*.json')}
             with self.assertRaises(AccountSafetyError):
                 service.merge_accounts(self.root,source.key,target.key)
             self.assertTrue(all(p.read_bytes()==data for p,data in before.items()))
@@ -199,12 +201,12 @@ class ReviewedUiTests(unittest.TestCase):
         source=self.root/'incoming.json'
         source.write_text(json.dumps({'uid':'100000001','categories':{'6':[group()]}}))
         self.window._import_paths([source])
-        original=(accounts.active_data_dir(self.root)/service.ARCHIVE_FILENAME).read_bytes()
+        original=service.active_archive_path(self.root).read_bytes()
         with patch('stellasora_toolkit.ui.controller.QMessageBox.warning') as warning:
             self.window._save_uid('100000002')
         warning.assert_called_once()
         self.assertEqual(service.effective_uid(self.root),'100000001')
-        self.assertEqual((accounts.active_data_dir(self.root)/service.ARCHIVE_FILENAME).read_bytes(),original)
+        self.assertEqual(service.active_archive_path(self.root).read_bytes(),original)
 
     def test_removed_demo_cli_flags_are_rejected(self):
         for flag in ('--demo','--beta'):

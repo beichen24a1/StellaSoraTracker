@@ -6,8 +6,8 @@
 
 目录结构(输出目录 = exports):
     accounts.json                     账号清单 + 当前账号
-    accounts/<key>/stellasora_gacha_archive.json    该账号的归档
-    accounts/<key>/<uid>.json                       该账号的分享文件
+    <uid>.json                         该账号的主归档及分享文件
+    accounts/<key>/                    独立 UID 配置及保留的旧档
     accounts/<key>/stellasora_gacha_*.json/csv      该账号的导出
     official_banners_*.json / catalog_sync_state.json  这些缓存与账号无关, 留在根目录
 
@@ -25,6 +25,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from time import time
+from . import archive_layout
 
 ACCOUNTS_FILENAME = "accounts.json"
 ACCOUNTS_DIRNAME = "accounts"
@@ -159,6 +160,36 @@ def load_state(output_dir: Path) -> AccountState:
             data_dir(output_dir, state.active or state.accounts[0].key).mkdir(parents=True, exist_ok=True)
             return state
 
+    # B's existing flat archives can be opened directly without importing one by one.
+    # Only bootstrap discovery: an existing index remembers explicit user selection.
+    if not path.exists():
+        flat = []
+        for candidate in output_dir.glob('*.json'):
+            if not archive_layout.UID_RE.fullmatch(candidate.stem):
+                continue
+            try:
+                archive_layout._read(candidate, candidate.stem)
+                flat.append(candidate)
+            except (OSError, ValueError, TypeError):
+                continue
+        if flat:
+            flat.sort(key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
+            entries = [Account(p.stem, p.stem) for p in flat]
+            legacy = output_dir / ARCHIVE_FILENAME
+            if legacy.is_file():
+                try:
+                    old = json.loads(legacy.read_text('utf-8-sig'))
+                    legacy_uid = str(old.get('uid') or '') if isinstance(old, dict) else ''
+                except (OSError, ValueError):
+                    legacy_uid = ''
+                key = normalize_key(legacy_uid, DEFAULT_KEY)
+                _migrate_legacy(output_dir, key, legacy_uid)
+                if not any(a.key == key for a in entries):
+                    entries.append(Account(key, legacy_uid))
+            state = AccountState(tuple(entries), flat[0].stem)
+            save_state(output_dir, state)
+            return state
+
     legacy = output_dir / ARCHIVE_FILENAME
     uid = ""
     if legacy.is_file():
@@ -169,7 +200,11 @@ def load_state(output_dir: Path) -> AccountState:
         except (OSError, ValueError):
             uid = ""
     key = normalize_key(uid, DEFAULT_KEY)
-    _migrate_legacy(output_dir, key, uid)
+    # An intentionally emptied index must not resurrect a removed legacy account.
+    if not path.exists():
+        _migrate_legacy(output_dir, key, uid)
+    else:
+        key, uid = DEFAULT_KEY, ''
     state = AccountState((Account(key=key, uid=uid, name=""),), key)
     save_state(output_dir, state)
     return state
@@ -187,7 +222,7 @@ def active_account(output_dir: Path) -> Account | None:
 
 
 def active_data_dir(output_dir: Path) -> Path:
-    """当前账号的数据目录(归档/分享文件都放这里)。"""
+    """当前账号的独立配置目录；主归档用 archive_layout.archive_path 解析。"""
     state = ensure_ready(output_dir)
     account = state.active_account
     return data_dir(output_dir, account.key if account else DEFAULT_KEY)
@@ -243,7 +278,10 @@ def archive_group_count(output_dir: Path, key: str) -> int:
 
     只读一眼 JSON, 给界面显示"哪个账号有数据"用。
     """
-    path = data_dir(output_dir, key) / ARCHIVE_FILENAME
+    directory = data_dir(output_dir, key)
+    path = archive_layout.archive_path(directory)
+    if not path.exists():
+        path = directory / ARCHIVE_FILENAME
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -318,13 +356,31 @@ def remove(output_dir: Path, key: str) -> bool:
     if len(remaining) == len(state.accounts):
         return False
     target = accounts_root(output_dir) / normalize_key(key)
-    if target.exists():
-        try:
-            target.rename(target.with_name(f"{target.name}.deleted_{int(time())}"))
-        except OSError:
-            pass
     active = state.active if state.active != key else (remaining[0].key if remaining else "")
-    return save_state(output_dir, AccountState(remaining, active))
+    removed = next(account for account in state.accounts if account.key == key)
+    flat = archive_layout.archive_path(target)
+    keep_shared = any(a.uid == removed.uid for a in remaining) if removed.uid else False
+    kept = target.with_name(f'{target.name}.deleted_{int(time() * 1000000)}')
+    moved_flat = False
+    moved_directory = False
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        target.rename(kept)
+        moved_directory = True
+        if flat.parent == Path(output_dir) and flat.is_file() and not keep_shared:
+            # Preserve both the old share and the current primary when names coincide.
+            saved = kept / ('removed_' + flat.name)
+            flat.rename(saved)
+            moved_flat = True
+        if not save_state(output_dir, AccountState(remaining, active)):
+            raise OSError('账号清单保存失败')
+        return True
+    except OSError:
+        if moved_flat:
+            saved.rename(flat)
+        if moved_directory:
+            kept.rename(target)
+        return False
 
 
 def adopt_uid(output_dir: Path, uid: str) -> Account | None:

@@ -7,7 +7,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Iterable
 
-from . import accounts, server_config
+from . import accounts, server_config, archive_layout
 from .account_uid import UidSearch, find_account_uid
 from .account_verification import verified_uid_search
 from .account_guard import AccountSafetyError, check_process_account, block_process_session, check_account_records
@@ -298,7 +298,7 @@ def validate_categories(categories: dict) -> None:
 
 def read_owned_archive(directory: Path, uid: str) -> dict:
     """Read-only browsing may fall back; saving must never silently overwrite damaged data."""
-    path = Path(directory) / ARCHIVE_FILENAME
+    path = archive_layout.ensure_archive(directory)
     if path.exists():
         try:
             payload = json.loads(path.read_text(encoding='utf-8-sig'))
@@ -337,7 +337,11 @@ def read_archive_payload(output_dir: Path) -> dict:
     stellasora_gacha_*.json 升上来的, 不该因为少一个归档文件名就丢数据。
     读不到任何东西返回 {}。
     """
-    archive = output_dir / ARCHIVE_FILENAME
+    try:
+        archive = archive_layout.ensure_archive(output_dir)
+    except AccountSafetyError:
+        # Browsing remains available, while every writer uses strict ensure_archive.
+        archive = Path(output_dir) / ARCHIVE_FILENAME
     try:
         payload = json.loads(archive.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -516,8 +520,7 @@ def write_share_file(output_dir: Path, categories: dict[int, list[dict]], uid: s
     键与顺序都和分享文件一致: version / uid / updatedAt / categories。
     UID 未知(没填过也没导入过带 uid 的文件)时不生成, 返回 None。
 
-    传进来的是"账号根目录"(带 accounts.json)时, 落到当前账号目录里 —— 分享文件
-    属于某个账号, 不该散在根目录里, 否则很容易和别的账号对上号。
+    已登记账号的主归档与分享文件统一为 exports/<UID>.json。
     """
     uid = normalize_uid(uid)
     if not uid:
@@ -525,8 +528,16 @@ def write_share_file(output_dir: Path, categories: dict[int, list[dict]], uid: s
     output_dir = Path(output_dir)
     if (output_dir / accounts.ACCOUNTS_FILENAME).is_file():
         output_dir = accounts.active_data_dir(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"{uid}.json"
+    _, owner, _ = archive_layout.context(output_dir)
+    if owner:
+        if uid != owner:
+            raise AccountSafetyError('归档 UID 与账号不一致，已停止保存')
+        path = archive_layout.ensure_archive(output_dir)
+        if path.exists():
+            read_owned_archive(output_dir, uid)
+    else:
+        path = output_dir / f'{uid}.json'
+    path.parent.mkdir(parents=True, exist_ok=True)
     _write_json_atomic(path, _archive_payload(categories, uid))
     return path
 
@@ -540,6 +551,8 @@ def _resolve_dir(output_dir: Path) -> Path:
     - 其它(全新目录) → 当前账号目录(读取方不需要先建账号)。
     """
     root = Path(output_dir)
+    if root.parent.name == accounts.ACCOUNTS_DIRNAME:
+        return root
     if (root / accounts.ACCOUNTS_FILENAME).is_file():
         return accounts.data_dir(root, (accounts.active_account(root) or accounts.Account("")).key or None)
     if (root / ARCHIVE_FILENAME).is_file():
@@ -557,8 +570,12 @@ def _account_uid(output_dir: Path) -> str:
 
 
 def active_data_dir(output_dir: Path) -> Path:
-    """当前账号的数据目录(归档/分享文件都放这里; 供 server_upload 等调用方使用)。"""
+    """当前账号的独立配置及旧导出目录。"""
     return _resolve_dir(Path(output_dir))
+
+
+def active_archive_path(output_dir: Path) -> Path:
+    return archive_layout.archive_path(_resolve_dir(Path(output_dir)))
 
 
 def count_pulls(categories: dict[int, list[dict]]) -> int:
@@ -626,8 +643,14 @@ def _archive_payload(categories: dict[int, list[dict]], uid: str = "") -> dict:
 
 
 def _write_archive(output_dir: Path, categories: dict[int, list[dict]], uid: str = "") -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    _write_json_atomic(output_dir / ARCHIVE_FILENAME, _archive_payload(categories, uid))
+    path = archive_layout.ensure_archive(output_dir)
+    _, owner, _ = archive_layout.context(output_dir)
+    if owner and owner != uid:
+        raise AccountSafetyError('归档 UID 与账号不一致，已停止保存')
+    if owner and path.exists():
+        read_owned_archive(output_dir, uid)
+    _write_json_atomic(path, _archive_payload(categories, uid))
+    archive_layout.ensure_archive(output_dir)
 
 
 @dataclass(frozen=True)
@@ -711,7 +734,10 @@ def load_latest_snapshot(output_dir: Path) -> Snapshot | None:
     target = _resolve_dir(Path(output_dir))
     # Imports update the canonical archive but do not rewrite older timestamped exports.
     # Prefer the complete merged archive on restart/account switch.
-    archive = target / ARCHIVE_FILENAME
+    try:
+        archive = archive_layout.ensure_archive(target)
+    except AccountSafetyError:
+        archive = target / ARCHIVE_FILENAME
     if archive.is_file():
         try:
             payload = json.loads(archive.read_text(encoding="utf-8"))

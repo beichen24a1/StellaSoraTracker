@@ -130,12 +130,12 @@ class ShareExportTests(unittest.TestCase):
                              sum(len(v) for v in CATEGORIES_B.values()))
             self.assertEqual(payload["categories"]["1"][0], CATEGORIES_B[1][0])
 
-    def test_export_lands_in_that_accounts_directory(self):
+    def test_export_is_the_flat_uid_archive(self):
         with temp_workdir("export_dir") as directory:
             big, small = self._two_accounts(directory)
             path = service.export_share_for_uid(directory, "100872990")
-            self.assertEqual(path.parent, accounts.data_dir(directory, big.key))
-            self.assertFalse((directory / path.name).exists(), "不该散在账号根目录里")
+            self.assertEqual(path, directory / f'{big.uid}.json')
+            self.assertTrue(path.is_file())
 
     def test_unknown_uid_is_refused(self):
         with temp_workdir("export_unknown") as directory:
@@ -163,14 +163,14 @@ class ShareExportTests(unittest.TestCase):
             self.assertEqual(accounts.active_account(directory).uid, '')
             self.assertEqual((accounts.data_dir(directory, blank.key)/'stellasora_gacha_archive.json').read_bytes(), before)
 
-    def test_write_share_file_redirects_root_to_active_account(self):
-        """万一还有代码把账号根目录传进来, 也不能把文件散在根目录。"""
+    def test_write_share_file_resolves_the_active_uid_at_root(self):
+        """账号根目录及配置目录均写入同一份 UID 主归档。"""
         with temp_workdir("export_root") as directory:
             big, _small = self._two_accounts(directory)
             accounts.switch(directory, big.key)          # 底层函数只能按"当前账号"兜底
             path = service.write_share_file(directory, CATEGORIES_A, "100872990")
-        self.assertEqual(path.parent, accounts.data_dir(directory, big.key))
-        self.assertFalse((directory / path.name).exists())
+            self.assertEqual(path, directory / f'{big.uid}.json')
+            self.assertTrue(path.exists())
 
     def test_no_records_is_refused_with_a_clear_message(self):
         with temp_workdir("export_empty") as directory:
