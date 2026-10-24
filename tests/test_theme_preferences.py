@@ -18,11 +18,11 @@ class PreferenceFileTests(unittest.TestCase):
     def test_missing_or_invalid_preferences_fall_back_without_writing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self.assertEqual(load_theme(root),'orbit')
+            self.assertEqual(load_theme(root),'sky')
             self.assertEqual(list(root.iterdir()),[])
             for text in ('{broken','[]','null','{"theme":"unknown"}','{"theme":[]}'):
                 (root/SETTINGS_FILENAME).write_text(text,encoding='utf-8')
-                self.assertEqual(load_theme(root),'orbit')
+                self.assertEqual(load_theme(root),'sky')
                 self.assertEqual((root/SETTINGS_FILENAME).read_text(encoding='utf-8'),text)
 
     def test_save_preserves_other_settings_and_does_not_touch_archive(self):
