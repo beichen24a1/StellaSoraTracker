@@ -12,7 +12,7 @@
 
 在「数据与设置 → 自动上传与更新」控制两个独立开关，选择会随主题偏好一起保存在 `exports/ui_settings.json`，切换主题或账号后仍然有效。
 
-- **自动上传（默认关闭）**：成功抓取或导入记录后，将对应 UID 的完整归档上传到蕾姆。使用与 [zhenkotone/stellasora_gacha](https://github.com/zhenkotone/stellasora_gacha/blob/main/stellasora_toolkit/upload.py) 一致的接口 `https://yostar.772077.xyz:7777/stellasora/api/gacha/upload`，不需要登录或 Token。按账号和上传地址记录成功指纹，未变化的归档不重复上传；上传失败不会改动本地归档，下次抓取或导入时可再次尝试。关闭后仍可在「上传与分享」手动上传。
+- **自动上传（默认关闭）**：成功抓取或导入记录后，将对应 UID 的完整归档上传到蕾姆。使用与 [zhenkotone/stellasora_gacha](https://github.com/zhenkotone/stellasora_gacha/blob/main/stellasora_toolkit/upload.py) 一致的接口 `喵喵喵`，不需要登录或 Token。按账号和上传地址记录成功指纹，未变化的归档不重复上传；上传失败不会改动本地归档，下次抓取或导入时可再次尝试。关闭后仍可在「上传与分享」手动上传。
 - **自动更新（默认开启）**：Windows 发行版启动时检查更新，没有每 6 小时定时检查。发现新版先询问是否下载，完成 SHA-256 校验后再询问是否重启安装；抓取或上传进行时会等待空闲。关闭开关会停止自动检查、取消自动下载及待安装提示，手动检查不受影响。源码模式不自动更新。发行更新统一指向本仓库的 GitHub 清单，可通过环境变量覆盖。
 
 上传成功表示归档已暂存，**每次仍需向蕾姆发送「星塔抽卡绑定 UID …」指令确认正式更新**；指令显示在「上传与分享」中。自动上传不会代发绑定指令。
