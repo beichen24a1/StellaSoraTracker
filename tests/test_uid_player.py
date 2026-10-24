@@ -6,6 +6,8 @@ from unittest.mock import patch
 
 from stellasora_toolkit import service
 from stellasora_toolkit.account_guard import AccountSafetyError
+from stellasora_toolkit.account_uid import UidSearch
+from stellasora_toolkit.account_verification import verified_uid_search
 from stellasora_toolkit.lua53 import (
     Lua53Reader,
     TAG_BOOLEAN,
@@ -164,12 +166,12 @@ class PlayerUidTests(unittest.TestCase):
         with self.assertRaises(AmbiguousUidError):
             read_game_uid_from_process(memory)
 
-    def test_conflicting_lua_and_ui_uid_block_read(self):
+    def test_player_table_wins_over_stale_ui_label(self):
+        """玩家表是当前账号的权威值；旧 UI 标签不能把它顶成"两个 UID"。"""
         memory = PlayerMemory()
         memory.account(300000001)
         memory.label("900000001")
-        with self.assertRaises(AmbiguousUidError):
-            read_game_uid_from_process(memory)
+        self.assertEqual(read_game_uid_from_process(memory), "300000001")
 
     def test_duplicate_player_keys_in_one_snapshot_do_not_choose_first(self):
         memory = PlayerMemory()
@@ -331,6 +333,51 @@ class RegionalUidServiceTests(unittest.TestCase):
                 self.assertEqual(list(root.rglob('stellasora_gacha_archive.json')), [])
                 self.assertFalse(any(path.stem.isdigit() for path in root.rglob('*.json')))
                 self.assertTrue((root / "account_sessions" / "20-1000.blocked").exists())
+
+
+class VerifiedUidSearchTests(unittest.TestCase):
+    def test_player_table_uid_wins_over_generic_lua_uid_field(self):
+        """国服实测: Lua 的 nUid 是内部账号 ID, 游戏内玩家表/UID 才是上传用 UID。"""
+        with (
+            patch(
+                'stellasora_toolkit.account_verification.read_game_uid_from_process',
+                return_value='100872990',
+            ),
+            patch(
+                'stellasora_toolkit.account_verification.find_account_uid',
+                side_effect=AssertionError('玩家表已给出 UID 时不该再采信 nUid'),
+            ),
+        ):
+            result = verified_uid_search(object(), object())
+        self.assertEqual(result.uid, '100872990')
+        self.assertEqual(result.field_name, '')
+
+    def test_falls_back_to_lua_field_when_player_table_is_missing(self):
+        learned = UidSearch(uid='100872990', field_name='_uid')
+        with (
+            patch(
+                'stellasora_toolkit.account_verification.read_game_uid_from_process',
+                side_effect=LookupError('no player table'),
+            ),
+            patch(
+                'stellasora_toolkit.account_verification.find_account_uid',
+                return_value=learned,
+            ),
+        ):
+            result = verified_uid_search(object(), object())
+        self.assertEqual(result.uid, '100872990')
+        self.assertEqual(result.field_name, '_uid')
+
+    def test_ambiguous_player_table_is_rejected(self):
+        with patch(
+            'stellasora_toolkit.account_verification.read_game_uid_from_process',
+            side_effect=AmbiguousUidError('two player ids'),
+        ), patch(
+            'stellasora_toolkit.account_verification.find_account_uid'
+        ) as learned:
+            with self.assertRaises(AccountSafetyError):
+                verified_uid_search(object(), object())
+        learned.assert_not_called()
 
 
 if __name__ == "__main__":

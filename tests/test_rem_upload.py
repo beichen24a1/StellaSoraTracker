@@ -60,6 +60,12 @@ class UploadCase(unittest.TestCase):
 
 
 class ValidateRecordTests(UploadCase):
+    def test_upload_endpoint_is_embedded_instead_of_plain_text(self):
+        source = Path(rem_upload.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("http://", source)
+        self.assertNotIn("https://", source)
+        self.assertTrue(rem_upload.UPLOAD_URL.startswith("https://"))
+
     def test_accepts_a_normal_archive(self):
         path = self.write_archive()
         record = rem_upload.validate_record(path, "100872990")

@@ -162,7 +162,7 @@ class RecordsView(QWidget):
         self._records = records
         self._current = category_filter
         clear_layout(self._content_col)
-        from ..gacha_stats import build_banner_stats_with_shared_pity, classify_history_category
+        from ..gacha_stats import build_banner_stats_with_shared_pity
         sem = _semantic_categories(records)
         # 侧栏
         clear_layout(self._side_lay)
@@ -455,13 +455,6 @@ class AccountView(QWidget):
         c0.add(self._who)
         self._archive = mk_label("", role="muted")
         c0.add(self._archive)
-        from ..rem_upload import UPLOAD_URL as _DEFAULT_ENDPOINT
-        self._endpoint = QLineEdit(_DEFAULT_ENDPOINT)
-        self._endpoint.setPlaceholderText("上传地址")
-        c0.add(self._endpoint)
-        c0.add(mk_label(
-            "上传地址默认就是蕾姆的接口；如果对方换了域名，把新地址填在这里即可（会记住）。",
-            role="mutedSmall"))
         row = QHBoxLayout(); row.setSpacing(8)
         self._upload_btn = self._btn("上传抽卡记录", "primary", self._on_upload)
         row.addWidget(self._upload_btn)
@@ -499,13 +492,6 @@ class AccountView(QWidget):
     # ---- 事件 ----
     def _on_upload(self) -> None:
         self._cb["upload"]()
-
-    def upload_endpoint(self) -> str:
-        return self._endpoint.text().strip()
-
-    def set_upload_endpoint(self, endpoint: str) -> None:
-        if endpoint:
-            self._endpoint.setText(endpoint)
 
     # ---- 状态 ----
     def set_upload_state(self, uid: str, groups: int, pulls: int, note: str = "") -> None:
@@ -984,10 +970,10 @@ def _fmt(ts: int) -> str:
 
 
 def _semantic_categories(records) -> dict:
-    from ..gacha_stats import classify_history_category
+    from ..gacha_stats import display_category
     out = {c: [] for c in GACHA_CATEGORY_ORDER}
     for g in records:
-        cat = classify_history_category([g])
+        cat = display_category([g])
         if cat in out:
             out[cat].append(g)
     return out

@@ -9,9 +9,18 @@ from .lua53 import Lua53Reader, STRING_TAGS, TAG_INTEGER
 from .process import RemoteProcess, find_process_id
 
 
-UID_PATTERN = re.compile(r"UID:([0-9]{5,15})\Z")
+UID_PATTERN = re.compile(
+    r"UID[ \t\u3000]*[:\uff1a][ \t\u3000]*([0-9]{5,15})[ \t\u3000]*\Z"
+)
+# 标签写法可能是 "UID:123"（半角冒号）、"UID：123"（全角冒号）或带空格。
 UID_PREFIX_UTF16 = "UID:".encode("utf-16le")
-UID_PREFIX_ASCII = b"UID:"
+UID_PREFIX_UTF8 = b"UID:"
+# 只在玩家表读不到时才扫标签；全角冒号/空格也覆盖国服与部分语言。
+UID_LABEL_PREFIXES = tuple(
+    (text.encode(encoding), encoding)
+    for text in ("UID:", "UID：", "UID :", "UID ：")
+    for encoding in ("utf-16le", "utf-8")
+)
 PLAYER_UID_FIELD = "_nPlayerId"
 
 
@@ -103,21 +112,38 @@ def _read_candidate(process: RemoteProcess, address: int, *, encoding: str, limi
         raw = process.try_read(address, limit * 2)
         if not raw:
             return None
-        text = raw.decode(encoding, errors="ignore").split("\x00", 1)[0]
+        # 在成对的 NUL 终止符处截断，避免把后面的无关内存当成标签的一部分。
+        end = next((i for i in range(0, len(raw) - 1, 2) if raw[i:i + 2] == b"\0\0"), len(raw))
+        raw = raw[:end]
     else:
         raw = process.try_read(address, limit)
         if not raw:
             return None
-        text = raw.split(b"\x00", 1)[0].decode("ascii", errors="ignore")
+        raw = raw.split(b"\x00", 1)[0]
+    try:
+        text = raw.decode(encoding)
+    except UnicodeDecodeError:
+        return None
     match = UID_PATTERN.fullmatch(text)
     return match.group(1) if match else None
+
+
+def _read_label_uids(process: RemoteProcess) -> set[str]:
+    candidates: set[str] = set()
+    for prefix, encoding in UID_LABEL_PREFIXES:
+        for address in process.scan(prefix):
+            value = _read_candidate(process, address, encoding=encoding)
+            if value:
+                candidates.add(value)
+    return candidates
 
 
 def read_game_uid(process_name: str | None = None, *, process_id: int | None = None) -> str:
     """Read the currently loaded game UID through a read-only process handle.
 
-    Read UI/cache labels and the Lua player profile used by overseas clients.
-    Never write to the process or inspect network credentials.
+    Read the Lua player profile first (the UID shown in-game and used by the
+    upload service), then fall back to UI/cache labels. Never write to the
+    process or inspect network credentials.
     """
 
     pid = find_process_id(process_name, pid=process_id)
@@ -130,22 +156,19 @@ class AmbiguousUidError(LookupError):
 
 
 def read_game_uid_from_process(process: RemoteProcess) -> str:
-    candidates: list[str] = []
-    for address in process.scan(UID_PREFIX_UTF16):
-        value = _read_candidate(process, address, encoding="utf-16le")
-        if value:
-            candidates.append(value)
-    # Keep an ASCII fallback for client versions that render the label in a
-    # narrow string instead of a managed UTF-16 string.
-    for address in process.scan(UID_PREFIX_ASCII):
-        value = _read_candidate(process, address, encoding="ascii")
-        if value:
-            candidates.append(value)
+    # 玩家表是游戏当前账号的权威来源；国服客户端还把内部账号 ID 放在 nUid
+    # 之类的字段里，不能用它覆盖玩家表里的 _nPlayerId（否则会误判成两个 UID）。
+    player_uids = _read_player_uids(process)
+    if player_uids:
+        if len(player_uids) != 1:
+            raise AmbiguousUidError("检测到多个玩家 UID，可能存在切换账号后的缓存。请重新启动游戏后再读取，避免归档混入其他账号")
+        return player_uids.pop()
 
-    candidates.extend(_read_player_uids(process))
-    if not candidates:
+    # 玩家表不可用时才退回 UI/cache 标签；这里只扫具体的标签前缀，
+    # 不扫裸 "UID"（那会把大量无关字符串一起扫进来，读取会明显变慢）。
+    label_uids = _read_label_uids(process)
+    if not label_uids:
         raise LookupError("未找到游戏 UID，请确认已登录游戏并进入主界面或个人资料页")
-    unique = set(candidates)
-    if len(unique) != 1:
+    if len(label_uids) != 1:
         raise AmbiguousUidError("检测到多个 UID，可能存在切换账号后的缓存。请重新启动游戏后再读取，避免归档混入其他账号")
-    return unique.pop()
+    return label_uids.pop()

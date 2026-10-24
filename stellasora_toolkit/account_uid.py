@@ -71,7 +71,9 @@ class UidSearch:
 
     def summary(self) -> str:
         if self.found:
-            return f"UID {self.uid}（游戏内存字段 {self.field_name}）"
+            if self.field_name:
+                return f"UID {self.uid}（游戏内存字段 {self.field_name}）"
+            return f"UID {self.uid}（游戏内玩家表）"
         if self.ambiguous:
             pairs = "、".join(f"{name}={value}" for name, value in self.candidates[:4])
             return f"检测到多个候选 UID，需要手动确认：{pairs}"

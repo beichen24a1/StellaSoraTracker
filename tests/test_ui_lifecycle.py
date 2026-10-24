@@ -94,7 +94,7 @@ class ShellRebuildTests(unittest.TestCase):
             # 复现"引用还在、C++ 对象已删"; 修复前 setText 会抛 already deleted。
             shiboken6.delete(old_sub)
             window._refresh_server_labels()
-            self.assertIn("五类卡池与五星记录", window._sub.text())
+            self.assertIn("四类卡池与五星记录", window._sub.text())
             # 就算哪天又把 _sub 指回死控件, 也不该崩(只是这一行字不更新)
             window._sub = old_sub
             window._refresh_server_labels()

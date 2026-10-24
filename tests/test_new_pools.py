@@ -333,6 +333,16 @@ class StaticPoolNameTests(unittest.TestCase):
         self.assertFalse(is_activity_pool(5), "小序号池(初心旅人)不该被当成活动池")
         self.assertTrue(is_activity_pool(1002))
 
+    def test_anniversary_pool_is_an_activity_pool(self):
+        """周年特选算活动卡池: 界面不再单独占一类。"""
+        from stellasora_toolkit.official_banners import is_activity_pool
+        from stellasora_toolkit.gacha_stats import display_category
+        from stellasora_toolkit.ui.beta_model import activity_pools
+        self.assertTrue(is_activity_pool(1001))
+        rows = activity_pools([{"Gid": 1001, "Time": 1, "Ids": [162]}])
+        self.assertEqual([row["gid"] for row in rows], [1001])
+        self.assertEqual(display_category([{"Gid": 1001, "Ids": [162]}]), "traveler_limited")
+
 
 class BundledCatalogTests(unittest.TestCase):
     def test_new_traveler_and_discs_are_bundled(self):

@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PySide6.QtWidgets import QApplication, QTableWidget, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QTableWidget, QPushButton
 from stellasora_toolkit.ui.window import StellaSoraApp
 from stellasora_toolkit.ui.beta_model import demo_snapshot, overview
 from stellasora_toolkit.service import ARCHIVE_FILENAME
@@ -78,6 +78,45 @@ class BetaTests(unittest.TestCase):
         unknown = overview([{'Gid':10170,'Time':10,'Ids':[103,161,103]}])
         self.assertEqual(unknown.category_stats['traveler_limited'].current_pity,1)
         self.assertEqual(unknown.total_five,1)
+
+    def test_anniversary_is_an_activity_pool_and_upload_endpoint_is_hidden(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            categories = {
+                '1': [{'Gid': 1002, 'Time': 10, 'Ids': [162, 212009]}],
+                '6': [{'Gid': 1001, 'Time': 20, 'Ids': [144, 211001]}],
+            }
+            (root / ARCHIVE_FILENAME).write_text(
+                json.dumps({'categories': categories}), encoding='utf-8')
+            window = StellaSoraApp(root, demo=False, online_sync=False)
+            self.assertEqual(window._account.findChildren(QLineEdit), [],
+                             '上传地址不应再有输入框')
+            self.assertNotIn('anniversary_selected', window.records.filters,
+                             '周年特选不应再单独占一个分类')
+            window.open_records('activity')
+            texts = []
+            for index in range(window.records.content.count()):
+                widget = window.records.content.itemAt(index).widget()
+                if widget is not None:
+                    texts.extend(item.text() for item in widget.findChildren(QLabel))
+            self.assertTrue(any('星途一载' in text for text in texts),
+                            '周年池应出现在活动卡池')
+            self.assertTrue(any('1002' in text for text in texts), '普通活动池仍要显示')
+            window.close()
+
+    def test_anniversary_only_archive_keeps_the_activity_filter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ARCHIVE_FILENAME).write_text(
+                json.dumps({'categories': {'6': [
+                    {'Gid': 1001, 'Time': 20, 'Ids': [144, 211001]}]}}),
+                encoding='utf-8')
+            window = StellaSoraApp(root, demo=False, online_sync=False)
+            self.assertFalse(window.records.filters['activity'].isHidden(),
+                             '周年特选算活动池, 活动卡池入口应保留')
+            window.open_records('activity')
+            self.assertEqual(window.records.current, 'activity')
+            window.close()
 
     def test_all_pull_table_and_search_filter(self):
         with tempfile.TemporaryDirectory() as tmp:

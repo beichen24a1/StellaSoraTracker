@@ -16,7 +16,7 @@ from ..catalog import same_item_name
 from ..service import (Snapshot, load_latest_snapshot, active_data_dir, import_gacha_file,
                       read_import_text, refresh_share_file, effective_uid)
 from ..exporter import export_all, parse_import_text
-from .constants import APP_VERSION
+from .constants import APP_VERSION, GACHA_CATEGORY_ORDER
 from .controller import (StellaSoraWindow as BusinessWindow, _Bridge,
                          _format_sync_report, _fmt_sync_items)
 from .beta_model import demo_snapshot, overview
@@ -248,7 +248,7 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
         stats = overview(self.snapshot.gacha)
         times = [int(g.get('Time') or 0) for g in self.snapshot.gacha if g.get('Time')]
         dates = f'{datetime.fromtimestamp(min(times)):%Y.%m.%d} — {datetime.fromtimestamp(max(times)):%Y.%m.%d}' if times else '暂无有效时间'
-        self._settings.set_summary(f'{stats.total_pulls:,} 抽 · {stats.total_five} 个五星 · {sum(s is not None for s in stats.category_stats.values())}/5 类卡池\n归档批次 {len(self.snapshot.gacha)} · {dates}')
+        self._settings.set_summary(f'{stats.total_pulls:,} 抽 · {stats.total_five} 个五星 · {sum(s is not None for s in stats.category_stats.values())}/{len(GACHA_CATEGORY_ORDER)} 类卡池\n归档批次 {len(self.snapshot.gacha)} · {dates}')
         if not self.demo:
             self._refresh_account_picker(); self._refresh_uid_state(); self._refresh_account_view(); self._refresh_server_labels()
             self._settings.set_archive_path(str(active_data_dir(self.output)/'stellasora_gacha_archive.json'))

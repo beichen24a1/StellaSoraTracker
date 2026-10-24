@@ -3,8 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from ..catalog import gacha_item_name, same_item_name
-from ..gacha_stats import (build_category_stat, build_banner_stats_with_shared_pity,
-                         classify_history_category, display_category)
+from ..gacha_stats import build_category_stat, build_banner_stats_with_shared_pity, display_category
 from ..service import Snapshot
 from ..official_banners import official_pool_info
 from .constants import GACHA_CATEGORY_ORDER, OFFICIAL_LIMITED_POOL_INFO
@@ -39,8 +38,9 @@ def categories(records):
 def activity_pools(records) -> list[dict]:
     """把"特殊活动卡池"(自选/联动/限定活动等)按 Gid 单独汇总出来。
 
-    这些池子的记录在归档里仍然落在 1..4(格式不变), 只是界面上要能单独看:
+    这些池子的记录在归档里仍然落在 1..4(周年特选是 6), 只是界面上要能单独看:
     Gid 不在 10xxx/20xxx 区间, 或 bannerType 命中活动关键词。
+    周年特选也算活动池, 不再单独占一个分类。
     返回 [{gid, name, pulls, five_stars, start, end}]。
     """
     from ..official_banners import is_activity_pool, pool_display_name

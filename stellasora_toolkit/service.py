@@ -10,7 +10,7 @@ from typing import Callable, Iterable
 from . import accounts, server_config
 from .account_uid import UidSearch, find_account_uid
 from .account_verification import verified_uid_search
-from .account_guard import AccountSafetyError, check_process_account, block_process_session, check_account_records
+from .account_guard import AccountSafetyError, check_process_account, check_account_records
 from .history_schema import HISTORY_CATEGORY_IDS
 from .client_lang import detect_language
 from .discovery import LuaTableDiscovery
@@ -85,13 +85,11 @@ def read_game_uid(
         creation_time = process.get_creation_time()
         lua = Lua53Reader(process)
         discovery = LuaTableDiscovery(process, lua)
-        try:
-            search = verified_uid_search(process, discovery, load_uid_field(data_dir))
-            check_process_account(Path(output_dir), pid, creation_time, search.uid)
-        except (OSError, LookupError, ValueError):
-            block_process_session(Path(output_dir), pid, creation_time)
-            raise
-    if search.found:
+        search = verified_uid_search(process, discovery, load_uid_field(data_dir))
+        # 只有真正读到 UID 后才绑定/阻断; 扫描超时或暂时读不到 UID 时不能把
+        # 整个游戏会话标记成"已切号", 否则一次临时失败会让后续读取全部被挡住。
+        check_process_account(Path(output_dir), pid, creation_time, search.uid)
+    if search.found and search.field_name:
         save_uid_field(data_dir, search.field_name)
     return search
 
@@ -205,14 +203,12 @@ def extract_snapshot(
         creation_time = process.get_creation_time()
         lua = Lua53Reader(process)
         discovery = LuaTableDiscovery(process, lua)
-        try:
-            search = verified_uid_search(process, discovery, load_uid_field(target))
-        except (OSError, LookupError, ValueError):
-            block_process_session(root, pid, creation_time)
-            raise
+        # "这次没读到 UID" 不代表账号被切换: 不要写 .blocked, 让用户稍后重试;
+        # 真正的切号会在 check_process_account 里读到不同 UID 时确认。
+        search = verified_uid_search(process, discovery, load_uid_field(target))
         uid = search.uid
         check_process_account(root, pid, creation_time, uid)
-        uid_note = f'UID 已核实（{search.field_name}）'
+        uid_note = f'UID 已核实（{search.field_name or "游戏内 UID"}）'
 
         # 国际服/日服共用 StellaSora.exe, 进程名分不出来 —— 看内存里加载的是哪种语言。
         # 用户手动指定过版本时不覆盖他的选择, 只提示(否则"点了日服又被切回国际服")。
@@ -240,7 +236,8 @@ def extract_snapshot(
                 verified = verified_uid_search(verification, LuaTableDiscovery(verification, Lua53Reader(verification)), search.field_name)
                 check_process_account(root, pid, creation_time, verified.uid)
         except (OSError, LookupError, ValueError) as error:
-            block_process_session(root, pid, creation_time)
+            # 读取结束时确认不了账号就放弃本次保存, 但不永久阻断这个游戏会话:
+            # 下一次读取还能重新核验; 只有确实读到不同 UID 才会被阻断。
             raise AccountSafetyError(f'读取结束时无法确认账号，已停止保存：{error}') from error
     locate_seconds = perf_counter() - started
     report(f"招募数据读取完成（{locate_seconds:.1f}s），正在生成本地 JSON 和 CSV")
@@ -248,7 +245,7 @@ def extract_snapshot(
     current_categories = sanitize_gacha_categories(raw_gacha)
     validate_categories(current_categories)
     check_account_records(root, uid, current_categories)
-    if search.found:
+    if search.found and search.field_name:
         # 按游戏里的 UID 归位: 已有该账号就切过去, 没有就新建, 记录写进它自己的目录
         account = accounts.adopt_uid(root, uid)
         if account is not None:

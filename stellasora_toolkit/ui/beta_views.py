@@ -12,7 +12,8 @@ from ..catalog import same_item_name, gacha_item_name, is_five_star_item
 from ..gacha_stats import build_banner_stats_with_shared_pity
 from ..gacha_display import SparkReward, insert_spark_rewards
 from ..official_banners import is_activity_pool, official_pool_info, pool_display_name
-from .constants import GACHA_CATEGORY_ORDER, GACHA_CATEGORY_NAMES, GACHA_CATEGORY_PITY_LIMITS, OFFICIAL_LIMITED_POOL_INFO
+from .constants import (GACHA_CATEGORY_ORDER, GACHA_CATEGORY_NAMES,
+                        GACHA_CATEGORY_PITY_LIMITS, OFFICIAL_LIMITED_POOL_INFO)
 from .beta_model import overview, categories, is_up, activity_pools
 from .theme import get_palette
 from .widgets import Card, PityBar, AvatarLabel, mk_label, mk_divider, FlowLayout
@@ -131,7 +132,7 @@ class PoolCard(Card):
         name = GACHA_CATEGORY_NAMES[cat].replace('招募','')
         top.addWidget(label(name,15,p.TEXT,True))
         top.addStretch()
-        top.addWidget(badge('特选' if cat == 'anniversary_selected' else '限时' if 'limited' in cat else '常驻'))
+        top.addWidget(badge('限时' if 'limited' in cat else '常驻'))
         self.body().addLayout(top)
         numbers = QHBoxLayout()
         total = stats.total_pulls if stats else 0
@@ -200,7 +201,7 @@ class HomeView(QWidget):
         title_col = QVBoxLayout()
         title_col.setSpacing(4)
         title_col.addWidget(label('招募总览' if self.variant != 'journal' else '我的相遇手札',25,p.TEXT,True))
-        title_col.addWidget(label('五类卡池 · 本地归档 · 每一次相遇都有迹可循',12,p.MUTED))
+        title_col.addWidget(label('四类卡池 · 本地归档 · 每一次相遇都有迹可循',12,p.MUTED))
         title_row.addLayout(title_col)
         title_row.addStretch()
         title_row.addWidget(badge('演示记录' if self.demo else '本地记录'))
@@ -380,13 +381,18 @@ class RecordsView(QWidget):
 
     def render(self,records):
         self.records = records
+        # 没有活动卡池时不显示空的筛选按钮, 保持筛选行干净。
+        has_activity = bool(activity_pools(records))
+        self.filters['activity'].setVisible(has_activity)
+        if self.current == 'activity' and not has_activity:
+            self.current = 'all'
         clear_layout(self.content)
         for key,b in self.filters.items(): b.setChecked(key == self.current)
         grouped = categories(records)
         activity = self.current == 'activity'
         selected = GACHA_CATEGORY_ORDER if self.current in ('all', 'activity') else [self.current]
         keep = is_activity_pool if activity else (lambda _gid: True)
-        self.summary.setText('按时间倒序 · 五星间隔按任意五星重置 · 首页另算 UP 保底 · 周年独立')
+        self.summary.setText('按时间倒序 · 五星间隔按任意五星重置 · 首页另算 UP 保底')
         self.summary.setWordWrap(True)
         if self.all_pulls:
             self._table(grouped, selected, keep)
@@ -415,6 +421,7 @@ class RecordsView(QWidget):
                             else f'{date(pool.start_time)} — {date(pool.end_time)}  ·  ID {pool.gid}')
                 names.addWidget(label(subtitle,11,p.MUTED))
                 top.addLayout(names,1)
+                if is_activity_pool(pool.gid): top.addWidget(badge('活动',p.ACCENT))
                 if pool.gid in overview(records).well_banners: top.addWidget(badge('井 · 120 抽达成',p.ACCENT))
                 top.addWidget(badge(f'{pool.total_pulls} 抽 / {len(pool.five_stars)} 五星'))
                 card.body().addLayout(top)
@@ -434,7 +441,7 @@ class RecordsView(QWidget):
                     tl.addLayout(names,1)
                     if reward:
                         tl.addWidget(badge('井',p.ACCENT))
-                    elif info and cat != 'anniversary_selected':
+                    elif info and info[3]:
                         tl.addWidget(badge('UP' if same_item_name(pull.name,info[3]) else '歪',p.PRIMARY if same_item_name(pull.name,info[3]) else p.DANGER))
                     flow.addWidget(tile)
                 fw = QWidget(); fw.setLayout(flow)

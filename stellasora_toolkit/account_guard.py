@@ -32,6 +32,13 @@ def check_process_account(output_dir: Path, pid: int, creation_time: int, uid: s
         raise AccountSafetyError("无效的游戏 UID，已停止读取")
     path = _session_path(output_dir, pid, creation_time)
     blocked = path.with_suffix(".blocked")
+    if blocked.exists() and not path.exists():
+        # 旧版本在"只是没读到 UID"时也会写阻断标记, 那种标记没有绑定过任何 UID,
+        # 不能证明发生过切号。清掉它, 避免一次临时读取失败把整个游戏会话锁死。
+        try:
+            blocked.unlink()
+        except OSError:
+            pass
     if blocked.exists():
         raise AccountSafetyError(
             "这次游戏启动期间已检测到账号切换或 UID 异常，已停止保存。"

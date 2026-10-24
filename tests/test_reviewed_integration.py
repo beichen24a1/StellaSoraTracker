@@ -60,7 +60,10 @@ class StrictCaptureTests(unittest.TestCase):
         self.verified_uid_search.side_effect = AccountSafetyError('UID not confirmed')
         with self.assertRaises(AccountSafetyError): self.read()
         self.assertEqual(list(self.root.rglob('stellasora_gacha_archive.json')),[])
-        self.assertTrue((self.root/'account_sessions/20-1000.blocked').exists())
+        # 临时读不到 UID 不能把整个游戏会话永久标记成"已切号"。
+        self.assertFalse((self.root/'account_sessions/20-1000.blocked').exists())
+        self.verified_uid_search.side_effect = None
+        self.assertEqual(self.read().uid,'100000001')
 
     def test_switch_during_read_preserves_existing_archive(self):
         first = self.read()
@@ -132,15 +135,17 @@ class CombinedUidTests(unittest.TestCase):
                  {'side_effect':player} if isinstance(player,Exception) else {'return_value':player})):
             return verified_uid_search(object(),object())
 
-    def test_learned_and_player_sources_must_agree(self):
+    def test_player_source_wins_over_learned_source(self):
         self.assertEqual(self.check(UidSearch(uid='100000001'),'100000001').uid,'100000001')
-        with self.assertRaises(AccountSafetyError): self.check(UidSearch(uid='100000001'),'100000002')
+        # 国服实测: nUid 是内部账号 ID, 玩家表里的 _nPlayerId 才是游戏 UID。
+        self.assertEqual(self.check(UidSearch(uid='1011690183'),'100872990').uid,'100872990')
 
     def test_overseas_player_source_and_learned_field_fallback(self):
         self.assertEqual(self.check(UidSearch(),'300000001').uid,'300000001')
         self.assertEqual(self.check(UidSearch(uid='100000001'),LookupError()).uid,'100000001')
         with self.assertRaises(AccountSafetyError): self.check(UidSearch(),LookupError())
-        with self.assertRaises(AccountSafetyError): self.check(UidSearch(budget_exceeded=True),'100000001')
+        # 玩家表已经给出 UID 时, 不再因为通用 Lua 字段扫描超时而阻断。
+        self.assertEqual(self.check(UidSearch(budget_exceeded=True),'100000001').uid,'100000001')
 
 
 class ReviewedUiTests(unittest.TestCase):
@@ -173,14 +178,19 @@ class ReviewedUiTests(unittest.TestCase):
         self.assertEqual(len(backups),1)
         self.assertEqual(json.loads(backups[0].read_text())['uid'],'100000001')
 
-    def test_anniversary_uses_separate_pity_and_history_intervals(self):
+    def test_anniversary_is_shown_as_an_activity_pool(self):
         snap=service.Snapshot([group()],gacha_categories={6:[group()]},uid='100000001')
         self.window._apply_snapshot(snap)
-        self.assertEqual(self.window.home.cards[-1].cat,'anniversary_selected')
+        cats=[card.cat for card in self.window.home.cards]
+        self.assertNotIn('anniversary_selected',cats)
+        self.assertEqual(len(cats),4)
         stats=overview([group()])
-        self.assertIsNone(stats.category_stats['traveler_limited'])
-        self.assertEqual(stats.category_stats['anniversary_selected'].current_pity,0)
-        self.window.records.set_filter('anniversary_selected')
+        self.assertIsNotNone(stats.category_stats['traveler_limited'])
+        self.assertEqual(len(stats.category_stats['traveler_limited'].five_stars),2)
+        from stellasora_toolkit.ui.beta_model import activity_pools
+        self.assertEqual([row['gid'] for row in activity_pools([group()])],[1001])
+        self.window.records.set_filter('activity')
+        self.assertEqual(self.window.records.current,'activity')
         self.assertEqual(len(build_banner_stats_with_shared_pity([group()])[0].five_stars),2)
 
     def test_process_picker_selects_exact_pid(self):

@@ -97,13 +97,13 @@ class ProcessAccountGuardTests(unittest.TestCase):
             check_process_account(self.root, 20, 100, UID_A)
         self.assertEqual(json.loads(self.session_path(20, 200).read_bytes())["uid"], UID_B)
 
-    def test_ambiguous_uid_can_block_session_before_first_binding(self):
+    def test_orphan_block_without_bound_uid_is_cleared(self):
+        """没有绑定过 UID 的 .blocked 是旧版临时失败留下的, 不能锁死整个会话。"""
         block_process_session(self.root, 20, 100)
         self.assertFalse(self.session_path().exists())
-        for uid in (UID_A, UID_B):
-            with self.subTest(uid=uid), self.assertRaises(AccountSafetyError):
-                check_process_account(self.root, 20, 100, uid)
-        self.assertFalse(self.session_path().exists())
+        check_process_account(self.root, 20, 100, UID_A)
+        self.assertFalse(self.session_path().with_suffix(".blocked").exists())
+        self.assertEqual(json.loads(self.session_path().read_bytes())["uid"], UID_A)
         check_process_account(self.root, 20, 200, UID_B)
 
     def test_corrupt_session_marker_fails_closed_without_rewriting(self):

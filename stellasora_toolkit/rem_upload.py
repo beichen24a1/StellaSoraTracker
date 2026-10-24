@@ -2,11 +2,14 @@
 
 接口语义照搬上游 zhenkotone/stellasora_gacha 的 upload.py:
 
-    POST https://yostar.772077.xyz:7777/stellasora/api/gacha/upload
+    POST <内置上传地址>
     {"uid": "<5-15 位数字>", "record": <完整的 <uid>.json>}
     无鉴权(没有 Token / Cookie / CSRF)
     成功 {"ok": true, "bindCommand": "星塔抽卡绑定 UID xxx"}
     失败 {"error": "..."}; 429 会带 Retry-After
+
+上传地址是固定的, 不在界面显示、也不允许用户修改; 源码里以编码形式保存,
+避免地址被直接检索到。客户端里不存在真正的"秘密", 这只是减少暴露面。
 
 注意"上传 ≠ 绑定": 上传只是把归档暂存到服务器, 还要把 bindCommand 这条指令发给
 蕾姆才算正式更新。所以首次上传成功时界面提示一次, 状态记在账号目录下的
@@ -15,6 +18,7 @@ rem_upload_state.json(同一 UID 以后不再弹)。
 
 from __future__ import annotations
 
+import base64
 import json
 import hashlib
 import re
@@ -28,9 +32,22 @@ from urllib.request import Request, urlopen
 from .history_schema import HISTORY_CATEGORY_KEYS
 from .account_guard import check_account_records, AccountSafetyError
 
-UPLOAD_URL = "https://yostar.772077.xyz:7777/stellasora/api/gacha/upload"
+# 固定上传地址: 异或编码后保存, 解码逻辑在下面。改域名时只换这两行即可。
+_ENDPOINT_SALT = b"StellaSoraGachaTool/rem/2026"
+_ENDPOINT_BLOB = (
+    "xThNu6r+Lnty2gz/Xm3S/jbmz1PF2qp3M787NyA2vr3ZKVWnuLduJmqaHvtWMJuoYryeS4eEvmEo4Q=="
+)
+
+
+def _decode_endpoint(blob: str = _ENDPOINT_BLOB, salt: bytes = _ENDPOINT_SALT) -> str:
+    key = hashlib.sha256(salt).digest()
+    raw = base64.b64decode(blob)
+    return bytes(byte ^ key[index % len(key)]
+                 for index, byte in enumerate(raw)).decode("utf-8")
+
+
+UPLOAD_URL = _decode_endpoint()
 STATE_FILENAME = "rem_upload_state.json"
-ENDPOINT_FILENAME = "rem_upload_endpoint.txt"
 UID_RE = re.compile(r"^[0-9]{5,15}$")
 MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 MAX_PULLS = 200000
@@ -274,33 +291,9 @@ def mark_uploaded(directory: Path, uid: str, *, fingerprint: str = '', endpoint:
     return first
 
 
-def load_endpoint(directory: Path) -> str:
-    """用户改过的上传地址(没有就用默认地址)。"""
-    try:
-        value = (Path(directory) / ENDPOINT_FILENAME).read_text(encoding="utf-8").strip()
-    except OSError:
-        return UPLOAD_URL
-    return value if value.startswith(("http://", "https://")) else UPLOAD_URL
-
-
-def save_endpoint(directory: Path, endpoint: str) -> bool:
-    """记住上传地址; 非法地址返回 False。"""
-    value = str(endpoint or "").strip()
-    if not value.startswith(("http://", "https://")):
-        return False
-    try:
-        directory = Path(directory)
-        directory.mkdir(parents=True, exist_ok=True)
-        (directory / ENDPOINT_FILENAME).write_text(value, encoding="utf-8")
-        return True
-    except OSError:
-        return False
-
-
 __all__ = [
-    "UPLOAD_URL", "STATE_FILENAME", "ENDPOINT_FILENAME", "BIND_TEMPLATE",
+    "UPLOAD_URL", "STATE_FILENAME", "BIND_TEMPLATE",
     "MAX_PAYLOAD_BYTES", "MAX_PULLS", "RemUploadError", "RemUploadResult",
     "bind_command_for", "validate_uid", "validate_record", "build_body",
     "diagnose", "upload_file", "uploaded_uids", "mark_uploaded",
-    "load_endpoint", "save_endpoint",
 ]

@@ -14,6 +14,10 @@ CATEGORY_DISC_STANDARD = "disc_standard"
 CATEGORY_ANNIVERSARY = "anniversary_selected"
 CATEGORY_UNKNOWN = "unknown"
 
+# 周年特选在归档里使用原始分类 6(独立记录格式); 界面按活动卡池展示,
+# 不单独占一个分类, 见 display_category()。
+ANNIVERSARY_POOL_GIDS = frozenset({1001})
+
 # 游戏 Lua 里 _mapGachaHistory 的外层 key。注意它和界面的展示顺序
 # (GACHA_CATEGORY_ORDER: 旅人限时/秘纹限时/旅人常驻/秘纹常驻)不是一回事 ——
 # 这里用的才是归档 JSON 里 categories 的真实键,经实际归档数据核对:
@@ -80,7 +84,7 @@ def classify_history_category(groups: list[dict[str, Any]]) -> str:
             gids.add(int(group.get("Gid")))
         except (TypeError, ValueError):
             continue
-    if gids == {1001}:
+    if gids == ANNIVERSARY_POOL_GIDS:
         return CATEGORY_ANNIVERSARY
     if any(20_000 <= gid < 30_000 for gid in gids):
         return CATEGORY_DISC_LIMITED
@@ -98,13 +102,14 @@ def classify_history_category(groups: list[dict[str, Any]]) -> str:
 
 
 def display_category(groups: list[dict[str, Any]]) -> str:
-    """**只给界面用**的分类: 活动池(未知 Gid)按掉落内容归到限时类。
+    """**只给界面用**的分类: 活动池(含周年特选)按掉落内容归到限时类。
 
     与 classify_history_category 的区别: 这里允许猜, 因为只影响展示分组,
-    不写任何文件; 而写归档必须保持游戏原始分类。
+    不写任何文件; 而写归档必须保持游戏原始分类(周年特选仍然是分类 6)。
+    周年特选在界面里算活动卡池, 不再单独占一类。
     """
     kind = classify_history_category(groups)
-    if kind != CATEGORY_UNKNOWN:
+    if kind not in (CATEGORY_UNKNOWN, CATEGORY_ANNIVERSARY):
         return kind
     travelers, discs = _pull_kinds(groups)
     if discs > travelers:

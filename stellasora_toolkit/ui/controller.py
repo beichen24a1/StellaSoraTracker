@@ -195,7 +195,7 @@ class StellaSoraWindow(QMainWindow):
     @staticmethod
     def _subtitle_text() -> str:
         profile = server_config.active()
-        return f"五类卡池与五星记录 · {profile.label}（{profile.client_names[0]}）"
+        return f"四类卡池与五星记录 · {profile.label}（{profile.client_names[0]}）"
 
     @staticmethod
     def _alive(widget) -> bool:
@@ -512,11 +512,6 @@ class StellaSoraWindow(QMainWindow):
         if not self._alive(view):
             return
         view.set_upload_state(uid, groups, pulls, note)
-        # 用户可能改过上传地址(服务器换域名时), 启动/切账号时回填
-        try:
-            view.set_upload_endpoint(rem_upload.load_endpoint(self._output_dir))
-        except (OSError, ValueError):
-            pass
 
     def _account_note(self, text: str) -> None:
         view = getattr(self, "_account", None)
@@ -535,13 +530,8 @@ class StellaSoraWindow(QMainWindow):
         except ValueError as err:
             self._account_note(f"无法上传：{err}")
             return
-        view = getattr(self, "_account", None)
-        endpoint = ""
-        if self._alive(view):
-            endpoint = view.upload_endpoint()
-        endpoint = endpoint or rem_upload.load_endpoint(self._output_dir)
-        rem_upload.save_endpoint(self._output_dir, endpoint)
-        self._account_note(f"正在上传 {path.name} 到 {endpoint} …")
+        endpoint = rem_upload.UPLOAD_URL
+        self._account_note(f"正在上传 {path.name} 到蕾姆 …")
         self._set_busy(True)
 
         def work() -> None:
@@ -776,10 +766,10 @@ class StellaSoraWindow(QMainWindow):
 
     def _apply_snapshot(self, snap) -> None:
         self._snapshot = snap
-        from ..gacha_stats import classify_history_category
+        from ..gacha_stats import display_category
         sem = {c: [] for c in GACHA_CATEGORY_ORDER}
         for g in snap.gacha:
-            cat = classify_history_category([g])
+            cat = display_category([g])
             if cat in sem:
                 sem[cat].append(g)
         st = Stats()

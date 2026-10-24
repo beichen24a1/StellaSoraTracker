@@ -105,15 +105,13 @@ class AutomationMixin:
         try:
             path = Path(path) if path else export_share_for_uid(self._output_dir)
             fingerprint = rem_upload.record_fingerprint(path)
-            endpoint = (self._account.upload_endpoint()
-                        or rem_upload.load_endpoint(self.output))
+            endpoint = rem_upload.UPLOAD_URL
             if automatic and rem_upload.was_uploaded(path, fingerprint, endpoint):
                 self._account_note(f'UID {path.stem} 的记录没有变化，已跳过重复上传。')
                 return
         except (OSError, ValueError, rem_upload.RemUploadError) as error:
             self._account_note(f'无法上传：{error}')
             return
-        rem_upload.save_endpoint(self.output, endpoint)
         self._account_note(f'正在{"自动" if automatic else ""}上传 UID {path.stem} 到蕾姆…')
         self._set_busy(True)
 
