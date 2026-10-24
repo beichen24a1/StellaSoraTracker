@@ -6,7 +6,7 @@
 
 在 [最新发布页](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 下载 Windows 免安装 ZIP，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份旧目录中的 `exports`；不要只复制单个 exe。原 sfjdk 版可复制完整 `exports` 到新版程序旁；原 zhenkotone 版的 `<UID>.json` 可在「数据与设置」导入或拖入窗口，原文件请保留。
 
-本次更新与校验说明见 [v1.3.0 更新日志](docs/releases/v1.3.0.md)。
+本次更新与校验说明见 [v1.3.1 更新日志](docs/releases/v1.3.1.md)。
 
 ## 自动上传与软件更新
 
