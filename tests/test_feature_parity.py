@@ -50,7 +50,7 @@ class FeatureParityTests(unittest.TestCase):
         for key in ('upload','copy_bind','open_manual'):
             self.assertTrue(callable(self.window._account._cb[key]),key)
         self.assertEqual(self.window.stack.count(),5)
-        self.assertEqual(set(self.window.settings._server_buttons),{'cn','intl','jp'})
+        self.assertEqual(set(self.window.settings._server_buttons),{'cn','intl','jp','tw'})
 
     def test_uid_imports_remain_isolated_and_switch_updates_archive_path(self):
         self.import_uid('100000001',157)
@@ -134,13 +134,14 @@ class FeatureParityTests(unittest.TestCase):
         before = service.load_archive_categories(self.root)
         with patch('stellasora_toolkit.service.detect_and_apply',return_value=(server_config.active(),'', ['cn'])), \
              patch('stellasora_toolkit.service.find_process_id',return_value=123), \
-             patch('stellasora_toolkit.service.RemoteProcess'), \
+             patch('stellasora_toolkit.service.RemoteProcess') as process, \
              patch('stellasora_toolkit.service.Lua53Reader'), \
              patch('stellasora_toolkit.service.LuaTableDiscovery') as discovery, \
-             patch('stellasora_toolkit.service.find_account_uid',return_value=UidSearch(uid='100000002',field_name='_uid')) as uid:
+             patch('stellasora_toolkit.service.verified_uid_search',return_value=UidSearch(uid='100000002',field_name='_uid')) as uid:
+            process.return_value.__enter__.return_value.get_creation_time.return_value = 1000
             discovery.return_value.read_target_field.return_value = {1:[{'Gid':10157,'Time':20,'Ids':[133]}]}
             snapshot = service.extract_snapshot(self.root,verify_uid=True)
-        self.assertEqual(uid.call_count,1)
+        self.assertEqual(uid.call_count,2)
         self.assertEqual(snapshot.uid,'100000002')
         self.assertEqual(accounts.active_account(self.root).uid,'100000002')
         self.assertEqual(service.load_account_categories(self.root,first.key),before)

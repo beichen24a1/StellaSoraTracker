@@ -29,7 +29,7 @@ from stellasora_toolkit.gacha_stats import (  # noqa: E402
 
 TEMP_ROOT = Path(__file__).resolve().parent.parent / ".testtmp"
 
-TRAVELER_PULL = {"Gid": 1001, "Time": 1791883135, "Ids": [162, 212009, 107]}
+TRAVELER_PULL = {"Gid": 1002, "Time": 1791883135, "Ids": [162, 212009, 107]}
 DISC_PULL = {"Gid": 1002, "Time": 1791883200, "Ids": [214066, 214067]}
 
 
@@ -88,9 +88,8 @@ class ExportFormatTests(unittest.TestCase):
                 self.assertEqual(list(normalized), [original])
 
     def test_only_out_of_range_keys_are_remapped(self):
-        normalized = normalize_category_keys({7: [dict(DISC_PULL)]})
-        self.assertTrue(set(normalized) <= {1, 2, 3, 4}, f"越界键必须收敛: {sorted(normalized)}")
-        self.assertEqual(list(normalized), [3])
+        with self.assertRaises(ValueError):
+            normalize_category_keys({7: [dict(DISC_PULL)]})
 
     def test_known_pool_records_are_still_repaired(self):
         """已知区间但被拍平到错分类的, 仍然按 Gid 纠正(历史修复逻辑不变)。"""
@@ -105,7 +104,7 @@ class ExportFormatTests(unittest.TestCase):
         self.assertEqual(list(payload), ["version", "uid", "updatedAt", "categories"])
         self.assertEqual(payload["version"], 1)
         self.assertEqual(sorted(payload["categories"]), ["1"])
-        self.assertEqual(payload["categories"]["1"][0]["Gid"], 1001)
+        self.assertEqual(payload["categories"]["1"][0]["Gid"], 1002)
 
 
 class BannerSchemaTests(unittest.TestCase):
@@ -113,7 +112,7 @@ class BannerSchemaTests(unittest.TestCase):
 
     SAMPLE = {
         "current": [
-            {"id": 1001, "name": "异途一世·自选", "bannerType": "角色自选规则",
+            {"id": 1002, "name": "异途一世·自选", "bannerType": "角色自选规则",
              "startTime": "2026-10-20T12:00:00+08:00", "endTime": "2026-11-10T10:59:59+08:00",
              "rateUp": {"fiveStar": None, "fourStar": None}},
             {"id": 10162, "name": "星沙源流", "bannerType": "角色限时规则",
@@ -162,14 +161,14 @@ class BannerSchemaTests(unittest.TestCase):
 
     def test_activity_pools_are_flagged(self):
         official_banners.fetch_banners()
-        self.assertTrue(official_banners.is_activity_pool(1001))     # 自选规则
+        self.assertTrue(official_banners.is_activity_pool(1002))     # 自选规则
         self.assertFalse(official_banners.is_activity_pool(10162))   # 普通限时
         self.assertFalse(official_banners.is_activity_pool(1))       # 常驻
         self.assertTrue(official_banners.is_activity_pool(4242))     # 区间外 → 当活动池
 
     def test_display_name_marks_activity_pools(self):
         official_banners.fetch_banners()
-        self.assertIn("活动", official_banners.pool_display_name(1001))
+        self.assertIn("活动", official_banners.pool_display_name(1002))
         self.assertEqual(official_banners.pool_display_name(10162), "星沙源流")
         self.assertIn("4242", official_banners.pool_display_name(4242))
 
@@ -267,17 +266,17 @@ class ActivityPoolViewTests(unittest.TestCase):
     """界面要能把活动池单独筛出来(数据仍归 1..4)。"""
 
     RECORDS = [
-        {"Gid": 1001, "Time": 1791883135, "Ids": [162, 214066]},
-        {"Gid": 1001, "Time": 1791883200, "Ids": [107]},
+        {"Gid": 1002, "Time": 1791883135, "Ids": [162, 214066]},
+        {"Gid": 1002, "Time": 1791883200, "Ids": [107]},
         {"Gid": 10162, "Time": 1791883300, "Ids": [162, 137]},
         {"Gid": 1, "Time": 1791883400, "Ids": [137]},
     ]
 
     def setUp(self):
         official_banners.set_active_banners(
-            {1001: ("异途一世·自选", "2026-10-20", "2026-11-10", ""),
+            {1002: ("异途一世·自选", "2026-10-20", "2026-11-10", ""),
              10162: ("星沙源流", "2026-10-20", "2026-11-10", "尘沙（源初）")},
-            {1001: "角色自选规则", 10162: "角色限时规则"})
+            {1002: "角色自选规则", 10162: "角色限时规则"})
 
     def tearDown(self):
         official_banners.set_active_banners({}, {})
@@ -285,9 +284,9 @@ class ActivityPoolViewTests(unittest.TestCase):
     def test_activity_pools_groups_by_gid_with_counts(self):
         from stellasora_toolkit.ui.beta_model import activity_pools
         rows = activity_pools(self.RECORDS)
-        self.assertEqual(len(rows), 1, "只有 1001 是活动池")
+        self.assertEqual(len(rows), 1, "只有 1002 是活动池")
         row = rows[0]
-        self.assertEqual(row["gid"], 1001)
+        self.assertEqual(row["gid"], 1002)
         self.assertEqual(row["pulls"], 3)
         self.assertEqual(row["five_stars"], 2)          # 162 + 214066
         self.assertEqual(row["name"], "异途一世·自选（活动）")
@@ -332,7 +331,7 @@ class StaticPoolNameTests(unittest.TestCase):
         self.assertFalse(is_activity_pool(1))
         self.assertFalse(is_activity_pool(2))
         self.assertFalse(is_activity_pool(5), "小序号池(初心旅人)不该被当成活动池")
-        self.assertTrue(is_activity_pool(1001))
+        self.assertTrue(is_activity_pool(1002))
 
 
 class BundledCatalogTests(unittest.TestCase):

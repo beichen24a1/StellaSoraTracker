@@ -150,19 +150,18 @@ class ShareExportTests(unittest.TestCase):
             path = service.export_share_for_uid(directory, "")
         self.assertEqual(path.name, "308423356.json")
 
-    def test_account_without_uid_claims_the_typed_one(self):
-        """还没登记 UID 的账号: 填进去就认领, 而不是导出失败。"""
+    def test_unclaimed_archive_cannot_be_claimed_just_by_typing_uid(self):
+        """无 UID 旧档不能仅凭输入数字认领或重写。"""
         with temp_workdir("export_claim") as directory:
             accounts.ensure_ready(directory)
             blank = accounts.create(directory, uid="", name="")
             service._write_archive(accounts.data_dir(directory, blank.key), CATEGORIES_B)
 
-            path = service.export_share_for_uid(directory, "308423356")
-
-            self.assertEqual(path.name, "308423356.json")
-            self.assertEqual(accounts.active_account(directory).uid, "308423356")
-            self.assertEqual(
-                json.loads(path.read_text(encoding="utf-8"))["uid"], "308423356")
+            before = (accounts.data_dir(directory, blank.key)/'stellasora_gacha_archive.json').read_bytes()
+            with self.assertRaises(ValueError):
+                service.export_share_for_uid(directory, "308423356")
+            self.assertEqual(accounts.active_account(directory).uid, '')
+            self.assertEqual((accounts.data_dir(directory, blank.key)/'stellasora_gacha_archive.json').read_bytes(), before)
 
     def test_write_share_file_redirects_root_to_active_account(self):
         """万一还有代码把账号根目录传进来, 也不能把文件散在根目录。"""
@@ -192,7 +191,7 @@ class MergeAccountTests(unittest.TestCase):
             stray = accounts.create(directory, uid="", name="")
             service._write_archive(accounts.data_dir(directory, main.key), CATEGORIES_A,
                                    uid="100872990")
-            service._write_archive(accounts.data_dir(directory, stray.key), CATEGORIES_B)
+            service._write_archive(accounts.data_dir(directory, stray.key), CATEGORIES_B, uid='100872990')
 
             added_groups, added_pulls = service.merge_accounts(directory, stray.key, main.key)
 
@@ -219,12 +218,12 @@ class MergeAccountTests(unittest.TestCase):
             first = accounts.create(directory, uid="", name="")
             service._write_archive(accounts.data_dir(directory, main.key), CATEGORIES_A,
                                    uid="100872990")
-            service._write_archive(accounts.data_dir(directory, first.key), CATEGORIES_B)
+            service._write_archive(accounts.data_dir(directory, first.key), CATEGORIES_B, uid='100872990')
             service.merge_accounts(directory, first.key, main.key)
             before = service.load_archive_categories(directory)
 
             second = accounts.create(directory, uid="", name="")
-            service._write_archive(accounts.data_dir(directory, second.key), CATEGORIES_B)
+            service._write_archive(accounts.data_dir(directory, second.key), CATEGORIES_B, uid='100872990')
             added_groups, added_pulls = service.merge_accounts(directory, second.key, main.key)
 
             self.assertEqual((added_groups, added_pulls), (0, 0), "同一批记录不该再计一次")

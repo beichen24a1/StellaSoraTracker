@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from .. import accounts, server_config
 from .. import rem_upload
+from ..process import find_game_processes
 from ..app_updater import (
     check_for_update, download_update, launch_update_installer, update_urls,
 )
@@ -150,7 +151,7 @@ class StellaSoraWindow(QMainWindow):
         """
         try:
             path = refresh_share_file(self._output_dir)
-        except OSError:
+        except (OSError, ValueError):
             return
         if path is not None:
             self._settings.set_uid_state(f"当前 UID：{effective_uid(self._output_dir)} · 已自动导出 {path.name}")
@@ -194,7 +195,7 @@ class StellaSoraWindow(QMainWindow):
     @staticmethod
     def _subtitle_text() -> str:
         profile = server_config.active()
-        return f"四类卡池与五星记录 · {profile.label}（{profile.client_names[0]}）"
+        return f"五类卡池与五星记录 · {profile.label}（{profile.client_names[0]}）"
 
     @staticmethod
     def _alive(widget) -> bool:
@@ -376,22 +377,15 @@ class StellaSoraWindow(QMainWindow):
             return
         # 两个客户端同时运行: 主线程弹窗让用户选定, 无需先启动后台任务
         # (国际服/日服共用 StellaSora.exe, 所以按"客户端"分组计数, 不能按版本数)
-        if len(probe_running_groups()) == 2:
-            choice = self._prompt_both_running()
-            if choice is None:      # 用户取消
-                self._status.setText("两种客户端均在运行, 未选择服务器, 未读取")
-                return
-            server_config.set_active(choice)
-            server_config.save_key(self._output_dir / server_config.CONFIG_FILENAME, choice)
-            self._refresh_server_labels()
-            self._status.setText(f"已选择读取 {server_config.active().label}，正在读取游戏数据")
-        else:
-            self._status.setText("正在读取游戏数据")
+        selected = self._choose_game_process()
+        if selected is None:
+            return
+        self._status.setText(f'正在读取 {selected.name} · PID {selected.pid}')
         self._set_busy(True)
 
         def work() -> None:
             try:
-                snap = extract_snapshot(self._output_dir, verify_uid=True)
+                snap = extract_snapshot(self._output_dir, selected.name, verify_uid=True, process_id=selected.pid)
                 self._bridge.done.emit(snap)          # 界面先显示数据
             except Exception as err:
                 self._bridge.error.emit(err)
@@ -412,6 +406,38 @@ class StellaSoraWindow(QMainWindow):
 
     def _on_progress(self, msg: str) -> None:
         self._status.setText(msg)
+
+    def _choose_game_process(self):
+        try:
+            choices = find_game_processes()
+            if not choices:
+                raise ProcessLookupError('未找到游戏客户端，请先登录游戏并进入主界面')
+        except OSError as error:
+            self._set_busy(False)
+            QMessageBox.warning(self, '选择游戏客户端', str(error))
+            return None
+        if len(choices) == 1:
+            selected = choices[0]
+        else:
+            labels = [f'{p.name} · PID {p.pid} · {p.path or "路径不可用"}' for p in choices]
+            label, ok = QInputDialog.getItem(self, '选择游戏客户端', '请选择本次读取的具体进程：', labels, 0, False)
+            if not ok:
+                self._set_busy(False)
+                return None
+            selected = choices[labels.index(label)]
+        previous_profile = server_config.active().key
+        if selected.name.casefold() == 'xtlr.exe':
+            server_config.set_active('cn')
+        elif server_config.active().key not in ('intl', 'jp', 'tw'):
+            server_config.set_active('intl')
+        self._profile = server_config.active()
+        if self._profile.key != previous_profile:
+            if not server_config.save_key(server_config.config_path(self._output_dir),self._profile.key,manual=False):
+                self._set_busy(False)
+                QMessageBox.warning(self,'服务器设置保存失败','未能保存所选客户端的服务器配置，已停止读取，请检查输出目录权限。')
+                return None
+        self._refresh_server_labels()
+        return selected
 
     def _on_sync_done(self, report) -> None:
         self._set_busy(False)
@@ -800,7 +826,7 @@ class StellaSoraWindow(QMainWindow):
             "五星记录": str(st.total_five),
             "五星概率": st.rate,
             "平均五星抽数": st.average,
-            "已加载分类": f"{st.loaded}/4",
+            "已加载分类": f"{st.loaded}/5",
             "归档批次": str(st.batches),
         }
         tiles = getattr(self, "_m", None) or {}
@@ -873,6 +899,21 @@ class StellaSoraWindow(QMainWindow):
             QMessageBox.warning(self, "UID 无效", "UID 只能用数字、字母、下划线或短横线（最长 64 位）。")
             return
         current = accounts.active_account(self._output_dir)
+        if uid:
+            try:
+                rem_upload.validate_uid(uid)
+            except rem_upload.RemUploadError as error:
+                QMessageBox.warning(self, 'UID 无效', str(error))
+                return
+            from ..service import read_archive_payload
+            current_data = read_archive_payload(accounts.active_data_dir(self._output_dir))
+            bound_uid = current_data.get('uid')
+            if current_data.get('categories') and not bound_uid:
+                QMessageBox.warning(self, '旧归档归属未确认', '当前旧档没有 UID，不能仅凭手填或当前游戏账号认领。请保留原档，核对归属后导入带 UID 的文件；新读取会保存到独立账号。')
+                return
+            if current_data.get('categories') and bound_uid and uid != bound_uid:
+                QMessageBox.warning(self, '归档 UID 不一致', '此归档已属于另一个 UID，已停止修改；请切换账号或导入对应 UID 的文件。')
+                return
         # 这个 UID 已经属于另一个账号 → 不能贴到当前账号头上, 否则导出/分享文件
         # 又会变成"名字是 A、内容是 B"(用户报过的那种"几个号合起来")
         other = accounts.find_by_uid(self._output_dir, uid) if uid else None
@@ -896,13 +937,17 @@ class StellaSoraWindow(QMainWindow):
 
     def _read_uid_from_game(self) -> None:
         """「从游戏读取 UID」: 后台只读扫描, 结果回来后自动填好并保存。"""
+        selected = self._choose_game_process()
+        if selected is None:
+            return
         self._settings.set_uid_state("正在扫描游戏内存, 请稍候…")
         self._status.setText("正在从游戏内存读取账号 UID")
 
         def work() -> None:
             try:
                 result = read_game_uid(self._output_dir,
-                                       progress=lambda msg: self._bridge.progress.emit(msg))
+                                       progress=lambda msg: self._bridge.progress.emit(msg),
+                                       process_name=selected.name, process_id=selected.pid)
             except Exception as err:                      # noqa: BLE001
                 self._bridge.uid_read.emit({"error": str(err)})
                 return
@@ -1010,7 +1055,7 @@ class StellaSoraWindow(QMainWindow):
             QMessageBox.information(self, "创建备份", "尚未找到本地招募归档,请先抓取抽卡记录。")
             return
         account = accounts.active_account(self._output_dir)
-        stamp = f"{datetime.now():%Y%m%d_%H%M%S}"
+        stamp = f"{datetime.now():%Y%m%d_%H%M%S_%f}"
         backup_dir = self._output_dir / "backups"; backup_dir.mkdir(parents=True, exist_ok=True)
         target = backup_dir / f"{ARCHIVE_FILENAME[:-5]}_{account.key if account else 'default'}_{stamp}.json"
         try:

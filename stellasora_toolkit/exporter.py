@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .gacha_stats import fallback_category_key, history_category_key
+from .history_schema import HISTORY_CATEGORY_IDS
 
 
 GACHA_ALLOWED = {"Gid", "Time", "Ids", "NextPackage"}
@@ -118,12 +119,17 @@ def normalize_category_keys(categories: dict[int, list[dict[str, Any]]]) -> dict
     """
     result: dict[int, list[dict[str, Any]]] = {}
     for category, groups in categories.items():
+        if type(category) is not int or category not in HISTORY_CATEGORY_IDS:
+            raise ValueError(f'不支持的抽卡分类 {category}，已停止写入，原归档保留')
         for group in groups:
+            if category == 6:
+                result.setdefault(6, []).append(group)
+                continue
             key = history_category_key([group])
             if key is None:
                 # 判不出来也要落在 1..4 里(新活动池的 Gid 可能不在老区间):
                 # 原分类合法就沿用, 否则按出货内容兜底 —— 归档/分享格式永远只有四类。
-                key = category if category in (1, 2, 3, 4) else fallback_category_key([group])
+                key = category
             result.setdefault(key, []).append(group)
     for groups in result.values():
         groups.sort(key=lambda item: (item.get("Time") or 0, item.get("Gid") or 0))
@@ -167,6 +173,8 @@ def sanitize_gacha_categories(raw: Any) -> dict[int, list[dict[str, Any]]]:
             category = int(key)
         except (TypeError, ValueError):
             continue
+        if category not in HISTORY_CATEGORY_IDS:
+            raise ValueError(f'不支持的抽卡分类 {category}，已停止操作，原归档保留')
         groups = sanitize_gacha(value)
         if groups:
             categories[category] = groups

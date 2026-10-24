@@ -26,13 +26,13 @@ class ResolveRunningTests(unittest.TestCase):
         """
         profile, keys = server_config.resolve_running(["explorer.exe", "StellaSora.exe"])
         self.assertEqual(profile.key, SERVER_INTL)
-        self.assertEqual(set(keys), {SERVER_INTL, SERVER_JP})
+        self.assertEqual(set(keys), {SERVER_INTL, SERVER_JP, server_config.SERVER_TW})
 
     def test_jp_selection_is_kept_when_that_client_runs(self):
         set_active(SERVER_JP)
         profile, keys = server_config.resolve_running(["StellaSora.exe"])
         self.assertEqual(profile.key, SERVER_JP, "选过日服就不要再被兜底成国际服")
-        self.assertEqual(set(keys), {SERVER_INTL, SERVER_JP})
+        self.assertEqual(set(keys), {SERVER_INTL, SERVER_JP, server_config.SERVER_TW})
 
     def test_single_cn_client_auto_selected(self):
         profile, keys = server_config.resolve_running(["xtlr.exe"])
@@ -43,7 +43,7 @@ class ResolveRunningTests(unittest.TestCase):
         profile, keys = server_config.resolve_running(["xtlr.exe", "StellaSora.exe"])
         self.assertIsNone(profile)  # 两个客户端都在运行 -> 需手动选择
         # 国际服与日服共用 StellaSora.exe, 所以两个客户端对应三个版本
-        self.assertEqual(set(keys), {SERVER_CN, SERVER_INTL, SERVER_JP})
+        self.assertEqual(set(keys), {SERVER_CN, SERVER_INTL, SERVER_JP, server_config.SERVER_TW})
 
     def test_no_client_running(self):
         profile, keys = server_config.resolve_running(["notepad.exe"])

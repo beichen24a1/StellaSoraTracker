@@ -1,5 +1,5 @@
 """Presentation data shared by the three UI betas; no archive writes."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from ..catalog import gacha_item_name, same_item_name
@@ -8,6 +8,7 @@ from ..gacha_stats import (build_category_stat, build_banner_stats_with_shared_p
 from ..service import Snapshot
 from ..official_banners import official_pool_info
 from .constants import GACHA_CATEGORY_ORDER, OFFICIAL_LIMITED_POOL_INFO
+from ..gacha_display import build_spark_rewards
 
 
 def is_up(gid: int, item_id: int) -> bool:
@@ -22,6 +23,7 @@ class Overview:
     total_pulls: int
     total_five: int
     well_banners: dict
+    rewards: dict = field(default_factory=dict)
 
 
 def categories(records):
@@ -76,13 +78,16 @@ def overview(records) -> Overview:
         key: build_category_stat(groups, is_up=is_up if 'limited' in key else None)
         for key, groups in grouped.items()
     }
-    wells = {
-        pool.gid: pool.total_pulls
-        for pool in build_banner_stats_with_shared_pity(grouped[GACHA_CATEGORY_ORDER[0]])
-        if pool.total_pulls >= 120
-    }
+    banner_info = dict(OFFICIAL_LIMITED_POOL_INFO)
+    for group in grouped[GACHA_CATEGORY_ORDER[0]]:
+        gid = int(group['Gid'])
+        if (info := official_pool_info(gid)) and all(info[1:]):
+            banner_info[gid] = info
+    rewards = build_spark_rewards(grouped[GACHA_CATEGORY_ORDER[0]], banner_info)
+    totals = {pool.gid: pool.total_pulls for pool in build_banner_stats_with_shared_pity(grouped[GACHA_CATEGORY_ORDER[0]])}
+    wells = {gid: totals[gid] for gid in rewards}
     return Overview(stats, sum(len(r.get('Ids', [])) for r in records),
-                    sum(len(s.five_stars) for s in stats.values() if s), wells)
+                    sum(len(s.five_stars) for s in stats.values() if s), wells, rewards)
 
 
 def demo_snapshot() -> Snapshot:

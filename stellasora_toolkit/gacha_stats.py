@@ -11,6 +11,7 @@ CATEGORY_TRAVELER_LIMITED = "traveler_limited"
 CATEGORY_DISC_LIMITED = "disc_limited"
 CATEGORY_TRAVELER_STANDARD = "traveler_standard"
 CATEGORY_DISC_STANDARD = "disc_standard"
+CATEGORY_ANNIVERSARY = "anniversary_selected"
 CATEGORY_UNKNOWN = "unknown"
 
 # 游戏 Lua 里 _mapGachaHistory 的外层 key。注意它和界面的展示顺序
@@ -23,6 +24,7 @@ HISTORY_CATEGORY_KEYS = {
     CATEGORY_TRAVELER_STANDARD: 2,
     CATEGORY_DISC_LIMITED: 3,
     CATEGORY_DISC_STANDARD: 4,
+    CATEGORY_ANNIVERSARY: 6,
 }
 
 
@@ -78,6 +80,8 @@ def classify_history_category(groups: list[dict[str, Any]]) -> str:
             gids.add(int(group.get("Gid")))
         except (TypeError, ValueError):
             continue
+    if gids == {1001}:
+        return CATEGORY_ANNIVERSARY
     if any(20_000 <= gid < 30_000 for gid in gids):
         return CATEGORY_DISC_LIMITED
     if any(10_000 <= gid < 20_000 for gid in gids):

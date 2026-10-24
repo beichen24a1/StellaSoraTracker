@@ -6,6 +6,7 @@ import struct
 from ctypes import wintypes
 from dataclasses import dataclass
 from typing import Iterator
+from collections.abc import Iterable
 
 
 if os.name != "nt":
@@ -14,6 +15,7 @@ if os.name != "nt":
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 PROCESS_QUERY_INFORMATION = 0x0400
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 PROCESS_VM_READ = 0x0010
 TH32CS_SNAPPROCESS = 0x00000002
 MEM_COMMIT = 0x1000
@@ -83,6 +85,40 @@ kernel32.VirtualQueryEx.argtypes = [
 kernel32.VirtualQueryEx.restype = ctypes.c_size_t
 kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 kernel32.CloseHandle.restype = wintypes.BOOL
+kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+kernel32.GetProcessTimes.restype = wintypes.BOOL
+
+GAME_EXECUTABLES = ('xtlr.exe', 'StellaSora.exe')
+
+
+@dataclass(frozen=True)
+class GameProcess:
+    name: str
+    pid: int
+    path: str = ''
+
+
+def _process_image_path(pid: int) -> str:
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return ''
+    try:
+        size = wintypes.DWORD(32768)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        return buffer.value if kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)) else ''
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def find_game_processes(executable: str | Iterable[str] | None = None) -> list[GameProcess]:
+    names = GAME_EXECUTABLES if executable is None else (executable,) if isinstance(executable, str) else tuple(executable)
+    if not names or any(not isinstance(name, str) or not name.strip() for name in names):
+        raise ValueError('游戏进程名不能为空')
+    wanted = {name.casefold() for name in names}
+    return sorted((GameProcess(name, pid, _process_image_path(pid)) for name, pid in running_processes()
+                   if name.casefold() in wanted), key=lambda process: (process.name.casefold(), process.pid))
 
 
 # MemoryRegion 已移到与平台无关的 memory.py（解析层不该依赖系统 API）。
@@ -93,7 +129,7 @@ from .memory import MemoryRegion  # noqa: E402  (保持既有导入路径可用)
 def running_processes() -> list[tuple[str, int]]:
     """一次快照返回 [(可执行文件名, PID), ...], 供进程名匹配与服务器版本探测使用。"""
     snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-    if snapshot == INVALID_HANDLE_VALUE:
+    if not snapshot or snapshot == INVALID_HANDLE_VALUE:
         raise OSError(ctypes.get_last_error(), "CreateToolhelp32Snapshot failed")
     try:
         result: list[tuple[str, int]] = []
@@ -103,29 +139,31 @@ def running_processes() -> list[tuple[str, int]]:
         while ok:
             result.append((entry.szExeFile, int(entry.th32ProcessID)))
             ok = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+        error = ctypes.get_last_error()
+        if error not in (0,18):
+            raise OSError(error,'进程列表读取不完整，已停止选择客户端，请重试')
         return result
     finally:
         kernel32.CloseHandle(snapshot)
 
 
-def find_process_id(executable: str | Iterable[str]) -> int:
+def find_process_id(executable: str | Iterable[str] | None = None, *, pid: int | None = None) -> int:
     """按候选进程名找 PID(国服/国际服进程名不同, 支持一次传入多个候选)。
 
     executable 为单个进程名或进程名序列; 依次匹配快照, 命中任一即返回。
     """
-    if isinstance(executable, str):
-        names = [executable]
-    else:
-        names = [name for name in executable if name]
-    if not names:
-        raise ValueError("没有可用的进程名")
-    wanted = {name.casefold() for name in names}
-    for exe_name, pid in running_processes():
-        if exe_name.casefold() in wanted:
+    if pid is not None and (type(pid) is not int or pid <= 0):
+        raise ValueError('PID 必须是正整数')
+    processes = find_game_processes(executable)
+    if pid is not None:
+        if any(process.pid == pid for process in processes):
             return pid
-    raise ProcessLookupError(
-        f"未找到游戏进程 {' 或 '.join(names)}，请先登录游戏并进入主界面"
-    )
+        raise ProcessLookupError(f'所选游戏进程 PID {pid} 已退出或不再匹配，请重新选择')
+    if len(processes) == 1:
+        return processes[0].pid
+    if not processes:
+        raise ProcessLookupError('未找到游戏进程 xtlr.exe / StellaSora.exe，请先登录游戏并进入主界面')
+    raise ProcessLookupError('检测到多个游戏客户端，请按 PID 选择具体实例，或使用 --pid')
 
 
 class RemoteProcess:
@@ -146,6 +184,15 @@ class RemoteProcess:
 
     def __exit__(self, *_args: object) -> None:
         self.close()
+
+    def get_creation_time(self) -> int:
+        if not self.handle:
+            raise RuntimeError('游戏进程句柄已关闭')
+        creation, exit_time, kernel_time, user_time = (wintypes.FILETIME() for _ in range(4))
+        if not kernel32.GetProcessTimes(self.handle, ctypes.byref(creation), ctypes.byref(exit_time),
+                                       ctypes.byref(kernel_time), ctypes.byref(user_time)):
+            raise OSError(ctypes.get_last_error(), '无法确认游戏进程启动时间，已停止读取，请重新启动游戏后重试')
+        return (creation.dwHighDateTime << 32) | creation.dwLowDateTime
 
     def regions(self) -> list[MemoryRegion]:
         if self._regions is not None:

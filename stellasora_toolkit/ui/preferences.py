@@ -43,6 +43,17 @@ def save_automation(output: Path, key: str, enabled: bool) -> bool:
     return _save_settings(output, {key: enabled})
 
 
+def load_pool_columns(output: Path) -> int | None:
+    value = _read_settings(output).get('pool_columns')
+    return value if type(value) is int and value in (1, 2) else None
+
+
+def save_pool_columns(output: Path, value: int | None) -> bool:
+    if value is not None and (type(value) is not int or value not in (1, 2)):
+        raise ValueError('卡池列数只能为自动、一列或两列')
+    return _save_settings(output, {'pool_columns': value})
+
+
 def _save_settings(output: Path, changes: dict) -> bool:
     output = Path(output)
     temporary = None

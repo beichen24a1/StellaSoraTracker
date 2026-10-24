@@ -42,6 +42,7 @@ class AutomationMixin:
         self._update_automatic = False
         self._update_cancel = threading.Event()
         self._ready_update = None
+        self._available_update = None
         self._installing_update = False
 
     def _set_automation(self, key, enabled):
@@ -61,7 +62,7 @@ class AutomationMixin:
                         else '自动上传已关闭，仍可在「上传与分享」手动上传。')
         elif enabled:
             self._schedule_update_check()
-            self.update_status.setText('自动更新已开启：启动及每 6 小时检查，下载校验后提示重启。')
+            self.update_status.setText('自动更新已开启：启动时检查，下载前询问，校验后再次确认安装。')
         else:
             self._update_timer.stop()
             if self._update_automatic:
@@ -69,6 +70,7 @@ class AutomationMixin:
                 self._update_generation += 1
                 self._update_state = 'idle'
                 self._install_timer.stop()
+                self._available_update = None
                 if self._ready_update:
                     self._discard_package(self._ready_update.value)
                     self._ready_update = None
@@ -157,9 +159,11 @@ class AutomationMixin:
             self._update_timer.start(5000)
             return
         self._start_update_check(automatic=True)
-        self._update_timer.start(6 * 60 * 60 * 1000)
 
     def _check_update(self):
+        if self._update_state in ('available', 'ready'):
+            self._offer_update()
+            return
         self._start_update_check(automatic=False)
 
     def _start_update_check(self, *, automatic):
@@ -204,10 +208,10 @@ class AutomationMixin:
                     f'v{result.version}\n{result.notes}\n\n打开下载地址？') == QMessageBox.Yes:
                 QDesktopServices.openUrl(QUrl(result.url))
             return
-        if not reply.automatic and QMessageBox.question(self, '软件更新',
-                f'v{result.version}\n{result.notes}\n\n下载并安装更新？') != QMessageBox.Yes:
-            return
-        self._download_app_update(result, reply.automatic, reply.generation)
+        self._available_update = reply
+        self._update_state = 'available'
+        self.update_status.setText(f'发现 v{result.version}，等待确认是否下载。')
+        self._install_timer.start(250)
 
     def _download_app_update(self, update, automatic, generation):
         self._update_state = 'downloading'
@@ -243,13 +247,25 @@ class AutomationMixin:
         self._install_timer.start(250)
 
     def _offer_update(self):
+        available = self._available_update
+        if available is not None:
+            if self._busy:
+                self._install_timer.start(1000)
+                return
+            self._available_update = None
+            if QMessageBox.question(self, '发现软件更新',
+                    f'v{available.value.version}\n{available.value.notes}\n\n是否下载更新？下载后仍需确认安装。') != QMessageBox.Yes:
+                self._update_state = 'idle'
+                return
+            self._download_app_update(available.value, available.automatic, available.generation)
+            return
         reply = self._ready_update
         if reply is None:
             return
         if self._busy:
             self._install_timer.start(1000)
             return
-        if reply.automatic and QMessageBox.question(self, '软件更新已就绪',
+        if QMessageBox.question(self, '软件更新已就绪',
                 f'v{reply.update.version} 已下载并通过校验。\n\n现在重启并安装？本地归档与设置会保留。'
                 '\n选择“否”后可在「数据与设置」重启更新。') != QMessageBox.Yes:
             return

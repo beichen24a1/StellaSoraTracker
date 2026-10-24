@@ -25,6 +25,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
+from .history_schema import HISTORY_CATEGORY_KEYS
+from .account_guard import check_account_records, AccountSafetyError
 
 UPLOAD_URL = "https://yostar.772077.xyz:7777/stellasora/api/gacha/upload"
 STATE_FILENAME = "rem_upload_state.json"
@@ -32,7 +34,7 @@ ENDPOINT_FILENAME = "rem_upload_endpoint.txt"
 UID_RE = re.compile(r"^[0-9]{5,15}$")
 MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 MAX_PULLS = 200000
-CATEGORY_KEYS = frozenset({"1", "2", "3", "4"})
+CATEGORY_KEYS = HISTORY_CATEGORY_KEYS
 BIND_TEMPLATE = "星塔抽卡绑定 UID {uid}"
 MAX_SAFE_INT = 2**53 - 1
 
@@ -165,6 +167,10 @@ def upload_file(archive_path: Path, *, endpoint: str = UPLOAD_URL,
     archive_path = Path(archive_path)
     uid = validate_uid(archive_path.stem)
     record = validate_record(archive_path, uid)
+    try:
+        check_account_records(archive_path.parent, uid, record['categories'])
+    except AccountSafetyError as error:
+        raise RemUploadError(str(error)) from error
     body = build_body(record, uid)
     request = Request(
         endpoint, data=body, method="POST",
@@ -200,6 +206,8 @@ def _raise_http_error(error: HTTPError, uid: str) -> None:
     if error.code == 429:
         delay = error.headers.get("Retry-After", "600") if error.headers else "600"
         message += f"（Retry-After: {delay} 秒，请稍后再试）"
+    if error.code == 422:
+        message += '。若归档含周年分类 6，请联系服务维护者确认兼容性；本地归档已保留。'
     raise RemUploadError(f"上传失败：{message}")
 
 def uploaded_uids(directory: Path) -> set[str]:

@@ -1,0 +1,61 @@
+{
+  "upstream": "https://github.com/zhenkotone/stellasora_gacha",
+  "commit": "1a0918b45fcdca298c558ebd1bd9a5aafa77ba91",
+  "files": [
+    {
+      "path": "stellasora_toolkit/history_schema.py",
+      "original_sha256": "510d06bbd1c5eef7675f9503d19e0e820eb796bd8c1f38c48b6ad68e148c9683",
+      "note": "adapted to reviewed Qt app and current account layout where necessary"
+    },
+    {
+      "path": "stellasora_toolkit/uid.py",
+      "original_sha256": "256ca7b55ea5bee8c445f6f5dc07d30d97997df8997f31ccfa6439c2c1c3e14b",
+      "note": "adapted to reviewed Qt app and current account layout where necessary"
+    },
+    {
+      "path": "stellasora_toolkit/gacha_display.py",
+      "original_sha256": "d13efe919e69a2e686384ee586ac3a0492e7130818076301ac79655b86570345",
+      "note": "adapted to reviewed Qt app and current account layout where necessary"
+    },
+    {
+      "path": "stellasora_toolkit/admin.py",
+      "original_sha256": "e63615f225c75018c5faf55f006cd31690c3b57a6da82959c3cbead4351943b1",
+      "note": "adapted to reviewed Qt app and current account layout where necessary"
+    },
+    {
+      "path": "stellasora_toolkit/account_guard.py",
+      "original_sha256": "3cd4dbe9b5b645634c6989aa833c046ad7031c86ab1245e7effb12e81b5a8539",
+      "note": "adapted to reviewed Qt app and current account layout where necessary"
+    },
+    {
+      "path": "tests/test_uid.py",
+      "original_sha256": "27a40da0f643fc463d177570110e552b64e6404b68cee036bdd38fd32155a1ac",
+      "note": "adapted to reviewed Qt app and current account layout where necessary"
+    },
+    {
+      "path": "tests/test_uid_player.py",
+      "original_sha256": "7e165b436c15f4baa72887f9eefa0a2b8dbdbce9d83def5d4c0d10da08728419",
+      "note": "adapted to reviewed Qt app and current account layout where necessary"
+    },
+    {
+      "path": "tests/test_gacha_display.py",
+      "original_sha256": "3e1d6d917d3a76b8d0715c0b3f0004fe3bbe320b2ea0957aa66e4e8ee19ad105",
+      "note": "adapted to reviewed Qt app and current account layout where necessary"
+    },
+    {
+      "path": "tests/test_account_guard.py",
+      "original_sha256": "3c7a5e7914c7728874eb7d34b4be88c91dca4ad91b3149dd8eb947c2c3b28193",
+      "note": "adapted to reviewed Qt app and current account layout where necessary"
+    },
+    {
+      "path": "tests/test_admin.py",
+      "original_sha256": "7ed15614aab355f9bc3b5dbbda7151b129b1a7f921b123c09e640885bacd44ec",
+      "note": "adapted to reviewed Qt app and current account layout where necessary"
+    },
+    {
+      "path": "tests/test_process.py",
+      "original_sha256": "22815ed9e91ded009d14b29cc03418124e7dadddc3042b4bb7577cf0f4ab1172",
+      "note": "upstream process selection, enumeration and identity tests"
+    }
+  ]
+}

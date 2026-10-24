@@ -96,7 +96,8 @@ class BetaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             window = StellaSoraApp(Path(tmp),demo=False,online_sync=False)
             original = window.snapshot
-            with patch('stellasora_toolkit.ui.controller.extract_snapshot',side_effect=RuntimeError('游戏未启动')) as extractor, patch('stellasora_toolkit.ui.controller.QMessageBox.critical'), patch('stellasora_toolkit.ui.controller.probe_running_groups',return_value=[]):
+            from stellasora_toolkit.process import GameProcess
+            with patch('stellasora_toolkit.ui.controller.extract_snapshot',side_effect=RuntimeError('游戏未启动')) as extractor, patch('stellasora_toolkit.ui.controller.QMessageBox.critical'), patch('stellasora_toolkit.ui.controller.find_game_processes',return_value=[GameProcess('xtlr.exe',123)]):
                 window.refresh()
                 import time
                 for _ in range(200):

@@ -35,10 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
     default_root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path.cwd()
     parser.add_argument("--output", type=Path, default=default_root / "exports")
     parser.add_argument("--dark", action="store_true", help="深色模式")
-    parser.add_argument("--beta", choices=("orbit", "sky", "journal"), help="UI Beta 风格")
-    parser.add_argument("--demo", action="store_true", help="仅在内存中展示演示记录，不读取游戏或写入归档")
-    parser.add_argument("--server", choices=("cn","intl","jp"), help="游戏版本：国服、国际服、日服")
+    parser.add_argument("--server", choices=("cn","intl","jp","tw"), help="游戏版本：国服、国际服、日服、台服")
     parser.add_argument("--smoke-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument('--elevated', action='store_true', help=argparse.SUPPRESS)
     return parser
 
 
@@ -51,15 +50,8 @@ def _ensure_admin() -> bool:
         return True
     if "--smoke-test" in sys.argv:
         return True
-    try:
-        import ctypes
-        if ctypes.windll.shell32.IsUserAnAdmin():
-            return True
-        params = subprocess.list2cmdline(sys.argv[1:]) if len(sys.argv) > 1 else None
-        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
-        return False
-    except Exception:
-        return True
+    from .admin import ensure_administrator
+    return ensure_administrator(sys.argv[1:], relaunch_attempted='--elevated' in sys.argv)
 
 
 def _smoke_test() -> int:
@@ -96,15 +88,20 @@ def main(argv: list[str] | None = None) -> int:
     _install_crash_log()
     if args.smoke_test:
         return _smoke_test()
+    try:
+        if not _ensure_admin():
+            return 0
+    except OSError as error:
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        app = QApplication.instance() or QApplication([])
+        QMessageBox.critical(None, '管理员启动未完成', f'未获得管理员权限，程序已停止启动。\n\n{error}')
+        return 1
     if args.server:
         from . import server_config
         server_config.set_active(args.server)
-        if not args.demo:
-            server_config.save_key(server_config.config_path(args.output),args.server,manual=True)
-    if not _ensure_admin():
-        return 0  # 已请求提权重启, 原实例退出
+        server_config.save_key(server_config.config_path(args.output),args.server,manual=True)
     from .ui.window import run
-    return run(args.output.resolve(), dark=args.dark, variant=args.beta, demo=args.demo)
+    return run(args.output.resolve(), dark=args.dark)
 
 
 def __getattr__(name):

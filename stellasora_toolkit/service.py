@@ -9,6 +9,9 @@ from typing import Callable, Iterable
 
 from . import accounts, server_config
 from .account_uid import UidSearch, find_account_uid
+from .account_verification import verified_uid_search
+from .account_guard import AccountSafetyError, check_process_account, block_process_session, check_account_records
+from .history_schema import HISTORY_CATEGORY_IDS
 from .client_lang import detect_language
 from .discovery import LuaTableDiscovery
 from .exporter import (
@@ -57,6 +60,8 @@ def read_game_uid(
     output_dir: Path,
     progress: ProgressCallback | None = None,
     process_name: str | Iterable[str] | None = None,
+    *,
+    process_id: int | None = None,
 ) -> UidSearch:
     """只读探测: 从游戏内存里找账号 UID(设置页「从游戏读取 UID」按钮用)。
 
@@ -73,18 +78,19 @@ def read_game_uid(
         names = [n for prof in server_config.PROFILES.values() for n in prof.client_names]
     else:
         names = profile.client_names
-    pid = find_process_id(names)
+    pid = find_process_id(names, pid=process_id) if process_id is not None else find_process_id(names)
     report(f"已连接游戏进程 PID {pid}，正在扫描账号 UID")
     data_dir = _resolve_dir(Path(output_dir))          # uid.json 属于账号目录, 不是根目录
     with RemoteProcess(pid) as process:
+        creation_time = process.get_creation_time()
         lua = Lua53Reader(process)
         discovery = LuaTableDiscovery(process, lua)
         try:
-            search = find_account_uid(discovery, preferred=effective_uid(output_dir),
-                                      field_hint=load_uid_field(data_dir))
-        except Exception as err:                               # noqa: BLE001
-            report(f"UID 探测中断: {err}")
-            return UidSearch()
+            search = verified_uid_search(process, discovery, load_uid_field(data_dir))
+            check_process_account(Path(output_dir), pid, creation_time, search.uid)
+        except (OSError, LookupError, ValueError):
+            block_process_session(Path(output_dir), pid, creation_time)
+            raise
     if search.found:
         save_uid_field(data_dir, search.field_name)
     return search
@@ -161,6 +167,8 @@ def extract_snapshot(
     process_name: str | Iterable[str] | None = None,
     progress: ProgressCallback | None = None,
     verify_uid: bool = False,
+    *,
+    process_id: int | None = None,
 ) -> Snapshot:
     """读取当前游戏版本的招募快照。
 
@@ -169,18 +177,15 @@ def extract_snapshot(
     显式传入 process_name 时直接使用, 不做版本切换。Lua 字段名取自当前版本配置。
 
     记录写进**当前账号**的数据目录; 若从游戏内存读到 UID, 会按 UID 自动切到对应账号
-    (没有就新建) —— 游戏里换账号后刷新一次就跟着换。
+    (没有就新建)。同一次游戏启动中切号会停止保存，需要先重启游戏。
     """
     report = progress or (lambda _message: None)
     root = output_dir.resolve()
     accounts.ensure_ready(root)
     target = accounts.active_data_dir(root)
     payload = read_archive_payload(target)
-    # UID 决定分享文件名: 设置页手填的优先, 其次是账号清单/归档里记着的
-    uid = (load_manual_uid(target) or (accounts.active_account(root).uid if accounts.active_account(root) else "")
-           or extract_uid(payload))
-    uid_note = "沿用已保存的 UID" if uid else ""
-    previous_uid = uid
+    # Persisted/manual UIDs name local files but never establish the live game's identity.
+    uid, uid_note = '', ''
     search = UidSearch()
 
     profile, note, running_keys = detect_and_apply(output_dir)
@@ -193,12 +198,21 @@ def extract_snapshot(
         names = [n for prof in server_config.PROFILES.values() for n in prof.client_names]
     else:
         names = profile.client_names
-    pid = find_process_id(names)
+    pid = find_process_id(names, pid=process_id) if process_id is not None else find_process_id(names)
     report(f"已连接游戏进程 PID {pid}，正在定位招募数据")
     started = perf_counter()
     with RemoteProcess(pid) as process:
+        creation_time = process.get_creation_time()
         lua = Lua53Reader(process)
         discovery = LuaTableDiscovery(process, lua)
+        try:
+            search = verified_uid_search(process, discovery, load_uid_field(target))
+        except (OSError, LookupError, ValueError):
+            block_process_session(root, pid, creation_time)
+            raise
+        uid = search.uid
+        check_process_account(root, pid, creation_time, uid)
+        uid_note = f'UID 已核实（{search.field_name}）'
 
         # 国际服/日服共用 StellaSora.exe, 进程名分不出来 —— 看内存里加载的是哪种语言。
         # 用户手动指定过版本时不覆盖他的选择, 只提示(否则"点了日服又被切回国际服")。
@@ -215,31 +229,25 @@ def extract_snapshot(
                     server_config.save_key(server_config.config_path(root), profile.key,
                                            manual=False)
 
-        if not uid or verify_uid:
-            # 还不知道 UID 时才去内存里找(要额外扫描, 有成本);
-            # field_hint 是上次学到的字段名: 命中就直接用, 不再全内存找"uid"。
-            # 这是增强功能: 探测本身出任何问题都必须放过, 不能连累招募数据读取。
-            # 另外给它一个时间预算 —— 扫描量随进程大小变化, 不能无限等。
-            report("正在从游戏内存读取账号 UID")
-            try:
-                search = find_account_uid(discovery, field_hint=load_uid_field(target),
-                                          deadline=perf_counter() + (UID_SEARCH_BUDGET if not uid else 2.0))
-            except Exception:                                  # noqa: BLE001
-                search = UidSearch()
-            if search.found:
-                uid = search.uid
-                uid_note = (f"从游戏内存读取（字段 {search.field_name}）"
-                            if uid != previous_uid else "UID 已核实")
-                save_uid_field(target, search.field_name)
-            elif search.budget_exceeded:
-                uid_note = "UID 扫描超时，本次先按当前账号记录（下次刷新会再试）"
         raw_gacha = discovery.read_target_field(
             profile.gacha_field,
             set(profile.gacha_companions),
         )
+        try:
+            with RemoteProcess(pid) as verification:
+                if verification.get_creation_time() != creation_time:
+                    raise AccountSafetyError('读取期间游戏进程已重启，已停止保存，请重新读取')
+                verified = verified_uid_search(verification, LuaTableDiscovery(verification, Lua53Reader(verification)), search.field_name)
+                check_process_account(root, pid, creation_time, verified.uid)
+        except (OSError, LookupError, ValueError) as error:
+            block_process_session(root, pid, creation_time)
+            raise AccountSafetyError(f'读取结束时无法确认账号，已停止保存：{error}') from error
     locate_seconds = perf_counter() - started
     report(f"招募数据读取完成（{locate_seconds:.1f}s），正在生成本地 JSON 和 CSV")
 
+    current_categories = sanitize_gacha_categories(raw_gacha)
+    validate_categories(current_categories)
+    check_account_records(root, uid, current_categories)
     if search.found:
         # 按游戏里的 UID 归位: 已有该账号就切过去, 没有就新建, 记录写进它自己的目录
         account = accounts.adopt_uid(root, uid)
@@ -251,8 +259,11 @@ def extract_snapshot(
                 payload = read_archive_payload(target)
             save_uid_field(target, search.field_name)
 
-    current_categories = sanitize_gacha_categories(raw_gacha)
+    payload = read_owned_archive(target, uid)
     categories = merge_gacha_categories(_categories_from_payload(payload), current_categories)
+    validate_categories(categories)
+    check_account_records(root, uid, categories)
+    check_process_account(root, pid, creation_time, uid)
     gacha = [group for groups in categories.values() for group in groups]
     files = list(export_all(target, gacha, None, categories, uid=uid))
     _write_archive(target, categories, uid=uid)
@@ -277,6 +288,31 @@ def _group_key(group: dict) -> tuple:
         group.get("Time"),
         tuple(ids) if isinstance(ids, list) else str(ids),
     )
+
+
+def validate_categories(categories: dict) -> None:
+    if not isinstance(categories, dict) or any(type(key) is not int or key not in HISTORY_CATEGORY_IDS
+                                               or not isinstance(value, list) for key, value in categories.items()):
+        raise AccountSafetyError('抽卡分类无效，只支持 1/2/3/4/6；已停止写入，原归档保留')
+
+
+def read_owned_archive(directory: Path, uid: str) -> dict:
+    """Read-only browsing may fall back; saving must never silently overwrite damaged data."""
+    path = Path(directory) / ARCHIVE_FILENAME
+    if path.exists():
+        try:
+            payload = json.loads(path.read_text(encoding='utf-8-sig'))
+        except (OSError, ValueError) as error:
+            raise AccountSafetyError('主归档损坏，已停止保存。请先备份整个 exports，再核对并从该 UID 的备份恢复主归档。') from error
+    else:
+        payload = read_archive_payload(directory)
+    if not isinstance(payload, dict):
+        raise AccountSafetyError('归档内容无效，已停止保存')
+    categories = _categories_from_payload(payload)
+    if categories and str(payload.get('uid') or '') != uid:
+        raise AccountSafetyError('旧归档 UID 缺失或与当前账号不一致，已保留旧档并停止合并；请先核对归属')
+    validate_categories(categories)
+    return payload
 
 
 def merge_gacha_categories(
@@ -425,6 +461,7 @@ def refresh_share_file(output_dir: Path) -> Path | None:
     uid = effective_uid(root)
     if not uid:
         return None
+    read_owned_archive(target, uid)
     return write_share_file(target, categories, uid)
 
 
@@ -450,6 +487,7 @@ def export_share_for_uid(output_dir: Path, uid_text: str = "") -> Path:
             if other is not None:
                 account = other
             elif account is not None and not account.uid:
+                read_owned_archive(accounts.data_dir(root, account.key), typed)
                 accounts.set_uid(root, account.key, typed)
                 account = accounts.active_account(root)
             else:
@@ -463,7 +501,7 @@ def export_share_for_uid(output_dir: Path, uid_text: str = "") -> Path:
     if not uid:
         raise ValueError("还没有 UID：先填一个并保存, 或导入一次带 uid 的分享文件")
     data_dir = accounts.data_dir(root, account.key)
-    categories = normalize_category_keys(_categories_from_payload(read_archive_payload(data_dir)))
+    categories = normalize_category_keys(_categories_from_payload(read_owned_archive(data_dir, uid)))
     if not categories:
         raise ValueError(f"账号 {account.label} 还没有记录, 请先点「刷新游戏数据」")
     path = write_share_file(data_dir, categories, uid)
@@ -544,6 +582,12 @@ def merge_accounts(output_dir: Path, source_key: str, target_key: str) -> tuple[
         raise ValueError("需要选择两个不同的账号")
     source_payload = read_archive_payload(accounts.data_dir(root, source_key))
     target_payload = read_archive_payload(accounts.data_dir(root, target_key))
+    source_uid, target_uid = extract_uid(source_payload), extract_uid(target_payload)
+    if (source_payload.get('categories') or target_payload.get('categories')) and (
+            not source_uid or not target_uid or source_uid != target_uid):
+        raise AccountSafetyError('只能合并归属已确认且 UID 相同的归档；不同 UID 或未标 UID 的旧档会保留，请先核对归属')
+    source_payload = read_owned_archive(accounts.data_dir(root, source_key), source_uid)
+    target_payload = read_owned_archive(accounts.data_dir(root, target_key), target_uid)
     target_categories = normalize_category_keys(_categories_from_payload(target_payload))
     source_categories = normalize_category_keys(_categories_from_payload(source_payload))
     merged = merge_gacha_categories(target_categories, source_categories)
@@ -572,6 +616,7 @@ def _write_json_atomic(path: Path, payload: dict) -> None:
 
 def _archive_payload(categories: dict[int, list[dict]], uid: str = "") -> dict:
     """归档/分享文件的统一外壳(键与顺序: version / uid / updatedAt / categories)。"""
+    validate_categories(categories)
     payload: dict = {"version": 1}
     if uid:
         payload["uid"] = uid
@@ -613,6 +658,9 @@ def import_gacha_file(output_dir: Path, source: Path) -> ImportResult:
     accounts.ensure_ready(root)
     text = read_import_text(Path(source))
     categories, uid = parse_import_text(text, Path(source).suffix)
+    validate_categories(categories)
+    if uid:
+        check_account_records(root, uid, categories)
     if not categories:
         raise ValueError(f"未能从 {Path(source).name} 中解析到抽卡记录，请选择网页版/桌面版导出的 JSON 或 CSV")
     if uid:
@@ -620,12 +668,16 @@ def import_gacha_file(output_dir: Path, source: Path) -> ImportResult:
         if account is not None and not account.name:
             accounts.set_uid(root, account.key, uid)
     target = accounts.active_data_dir(root)
-    payload = read_archive_payload(target)
+    uid = uid or effective_uid(root)
+    payload = read_owned_archive(target, uid)
     # 归档里历史上被拍平的分类先按 Gid 归位, 再合并 —— 否则同一批记录会因为
     # 归档在 key 1、导入文件在 key 3 而各存一份, 抽数直接翻倍。归位是幂等的。
     archived = normalize_category_keys(_categories_from_payload(payload))
     before = sum(len(groups) for groups in archived.values())
     merged = merge_gacha_categories(archived, categories)
+    validate_categories(merged)
+    if uid:
+        check_account_records(root, uid, merged)
     after = sum(len(groups) for groups in merged.values())
     # uid 以导入文件为准: 用户导进来的就是自己账号的数据, 空着就沿用当前账号已记录的
     uid = uid or effective_uid(root)

@@ -134,12 +134,13 @@ class AutoExportTests(unittest.TestCase):
         self.assertEqual(path.name, "100872990.json")
         self.assertEqual(list(payload), ["version", "uid", "updatedAt", "categories"])
 
-    def test_auto_export_prefers_manual_uid(self):
+    def test_auto_export_rejects_manual_uid_conflict(self):
         with temp_workdir("auto_manual") as directory:
             service._write_archive(directory, self._CATEGORIES, uid="111")
             service.save_manual_uid(directory, "100872990")
-            path = service.refresh_share_file(directory)
-        self.assertEqual(path.name, "100872990.json")
+            with self.assertRaises(ValueError):
+                service.refresh_share_file(directory)
+            self.assertFalse((directory/'100872990.json').exists())
 
     def test_auto_export_without_uid_or_records_is_a_noop(self):
         with temp_workdir("auto_empty") as directory:

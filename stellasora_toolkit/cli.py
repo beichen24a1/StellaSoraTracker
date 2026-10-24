@@ -10,6 +10,7 @@ from .service import extract_snapshot
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="只读导出《星塔旅人》招募记录")
+    parser.add_argument('--pid', type=int, help='选择具体游戏进程，可与 --server 同时使用')
     parser.add_argument(
         "--server", choices=sorted(server_config.PROFILES), default=None,
         help="游戏版本: 国服 cn / 国际服 intl(默认: 读取输出目录下的 server.json, 无则国服)",
@@ -34,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         server_config.init_from(args.output)
     try:
-        snapshot = extract_snapshot(args.output, args.process, progress=print)
+        snapshot = extract_snapshot(args.output, args.process, progress=print, process_id=args.pid)
         print(
             f"完成：{len(snapshot.gacha)} 组招募记录，共 {snapshot.pull_count} 个结果。"
         )

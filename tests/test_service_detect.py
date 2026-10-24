@@ -46,7 +46,7 @@ class DetectAndApplyTests(unittest.TestCase):
             self.assertIn("StellaSora.exe", note)
             self.assertIn("日服", note)          # 提示可以在设置页切日服
             # 国际服与日服共用 StellaSora.exe: 匹配到的是两个 key(同一个客户端)
-            self.assertEqual(set(keys), {SERVER_INTL, SERVER_JP})
+            self.assertEqual(set(keys), {SERVER_INTL, SERVER_JP, server_config.SERVER_TW})
             saved = server_config.load_key(tmp / CONFIG_FILENAME)
             self.assertEqual(saved, SERVER_INTL)  # 自动切换同步持久化
 
@@ -68,7 +68,7 @@ class DetectAndApplyTests(unittest.TestCase):
         self.assertEqual(profile.key, SERVER_CN)  # 保持设置页所选/--server 指定
         self.assertIn("同时检测到", note)
         self.assertIn("读取", note)
-        self.assertEqual(set(keys), {SERVER_CN, SERVER_INTL, SERVER_JP})
+        self.assertEqual(set(keys), {SERVER_CN, SERVER_INTL, SERVER_JP, server_config.SERVER_TW})
 
     def test_no_client_running_silent(self):
         with _patch_running(["notepad.exe"]):

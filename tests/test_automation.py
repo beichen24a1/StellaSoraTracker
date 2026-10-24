@@ -152,11 +152,11 @@ class AutomationTests(unittest.TestCase):
              patch('stellasora_toolkit.app_updater.check_for_update', return_value=update) as check, \
              patch('stellasora_toolkit.app_updater.download_update', return_value=package) as download, \
              patch('stellasora_toolkit.app_updater.launch_update_installer') as install, \
-             patch('stellasora_toolkit.ui.automation.QMessageBox.question', return_value=QMessageBox.No) as question:
+             patch('stellasora_toolkit.ui.automation.QMessageBox.question', side_effect=[QMessageBox.Yes,QMessageBox.No]) as question:
             self.window._automatic_update()
-            self.wait(lambda: self.window._update_state == 'ready')
+            self.wait(lambda: self.window._update_state == 'available')
             self.assertEqual(check.call_count, 1)
-            self.assertEqual(download.call_count, 1)
+            download.assert_not_called()
             self.window._set_busy(True)
             self.window._offer_update()
             question.assert_not_called()
@@ -164,6 +164,10 @@ class AutomationTests(unittest.TestCase):
             self.window._set_busy(False)
             self.window._offer_update()
             self.assertEqual(question.call_count, 1)
+            self.wait(lambda: self.window._update_state == 'ready')
+            self.assertEqual(download.call_count, 1)
+            self.window._offer_update()
+            self.assertEqual(question.call_count, 2)
             install.assert_not_called()
             self.window._restart_for_update()
             install.assert_called_once()

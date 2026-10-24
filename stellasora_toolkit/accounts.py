@@ -342,7 +342,7 @@ def adopt_uid(output_dir: Path, uid: str) -> Account | None:
         switch(output_dir, existing.key)
         return existing
     current = active_account(output_dir)
-    if current is not None and not current.uid:
+    if current is not None and not current.uid and archive_group_count(output_dir, current.key) <= 0:
         if set_uid(output_dir, current.key, uid):
             return Account(current.key, uid, current.name)
     account = create(output_dir, uid=uid)

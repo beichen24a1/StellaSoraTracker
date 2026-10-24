@@ -85,7 +85,7 @@ class ProfileTests(unittest.TestCase):
 
 class RunningGroupTests(unittest.TestCase):
     def test_one_shared_client_is_a_single_group(self):
-        self.assertEqual(running_client_groups(["StellaSora.exe"]), [[SERVER_INTL, SERVER_JP]])
+        self.assertEqual(running_client_groups(["StellaSora.exe"]), [[SERVER_INTL, SERVER_JP, server_config.SERVER_TW]])
 
     def test_cn_alone_is_one_group(self):
         self.assertEqual(running_client_groups(["xtlr.exe"]), [[SERVER_CN]])
@@ -94,7 +94,7 @@ class RunningGroupTests(unittest.TestCase):
         groups = running_client_groups(["xtlr.exe", "StellaSora.exe"])
         self.assertEqual(len(groups), 2)
         self.assertIn([SERVER_CN], groups)
-        self.assertIn([SERVER_INTL, SERVER_JP], groups)
+        self.assertIn([SERVER_INTL, SERVER_JP, server_config.SERVER_TW], groups)
 
     def test_no_client(self):
         self.assertEqual(running_client_groups(["notepad.exe"]), [])
@@ -117,7 +117,7 @@ class DetectWithJpTests(unittest.TestCase):
             profile, note, keys = detect_and_apply(directory)
         self.assertEqual(profile.key, SERVER_JP)
         self.assertEqual(note, "")
-        self.assertEqual(set(keys), {SERVER_INTL, SERVER_JP})
+        self.assertEqual(set(keys), {SERVER_INTL, SERVER_JP, server_config.SERVER_TW})
 
     def test_defaults_to_intl_and_tells_how_to_switch(self):
         server_config.set_active(SERVER_CN)
@@ -156,7 +156,7 @@ class DetectWithJpTests(unittest.TestCase):
             profile, note, keys = detect_and_apply(None)
         self.assertEqual(profile.key, SERVER_JP)
         self.assertIn("同时检测到", note)
-        self.assertEqual(set(keys), {SERVER_CN, SERVER_INTL, SERVER_JP})
+        self.assertEqual(set(keys), {SERVER_CN, SERVER_INTL, SERVER_JP, server_config.SERVER_TW})
 
 
 class LanguageApiTests(unittest.TestCase):

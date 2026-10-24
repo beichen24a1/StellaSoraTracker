@@ -26,7 +26,7 @@ from .theme import set_palette, build_palette
 from .widgets import Card
 from .views import SettingsView, AccountView, HelpView, _style_combo_popup
 from .icons import icon
-from .preferences import load_theme, save_theme
+from .preferences import load_theme, save_theme, load_pool_columns, save_pool_columns
 from .automation import AutomationMixin
 
 class StellaSoraApp(AutomationMixin, BusinessWindow):
@@ -107,6 +107,7 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
         body = QVBoxLayout(); body.setSpacing(0); body.addWidget(self.topbar())
         self.stack = QStackedWidget()
         self.home = HomeView(self.variant,self.open_records,self.demo)
+        self.home.column_choice = load_pool_columns(self.output)
         self.records = RecordsView()
         self.records.current,self.records.query = self.record_filter,self.record_query.casefold().strip()
         self.records.search.blockSignals(True); self.records.search.setText(self.record_query); self.records.search.blockSignals(False)
@@ -152,6 +153,15 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
             b.setCheckable(True); b.setChecked(key==self.variant); group.addButton(b)
             self.theme_buttons[key] = b; row.addWidget(b)
         row.addStretch(); card.body().addLayout(row)
+        columns = QHBoxLayout()
+        columns.addWidget(label('卡池详情列数',12,p.TEXT))
+        self.pool_columns = QComboBox()
+        for name, value in (('自动排布',None),('一列',1),('两列',2)):
+            self.pool_columns.addItem(name,value)
+        self.pool_columns.setCurrentIndex({None:0,1:1,2:2}[load_pool_columns(self.output)])
+        self.pool_columns.currentIndexChanged.connect(self._change_pool_columns)
+        columns.addWidget(self.pool_columns); columns.addStretch()
+        card.body().addLayout(columns)
         self._settings._col.insertWidget(2,card)
         actions = Card(pad=18); actions.add(label('导入、导出与版本',16,p.TEXT,True))
         row = QHBoxLayout()
@@ -160,6 +170,18 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
         row.addStretch(); actions.body().addLayout(row)
         self._settings._col.insertWidget(3,actions)
         self._add_automation_card()
+
+    def _change_pool_columns(self, _index):
+        value = self.pool_columns.currentData()
+        if not save_pool_columns(self.output,value):
+            self.status('列数保存失败，设置未改变。')
+            self.pool_columns.blockSignals(True)
+            self.pool_columns.setCurrentIndex({None:0,1:1,2:2}[load_pool_columns(self.output)])
+            self.pool_columns.blockSignals(False)
+            return
+        self.home.column_choice = value
+        self.home._reflow()
+        self.status('卡池详情列数已保存。')
 
     def _add_automation_card(self):
         p = palette(self.variant)
@@ -170,8 +192,8 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
             ('auto_upload', '抓取或导入新记录后自动上传到蕾姆',
              '默认关闭。上传完整 UID 与抽卡记录；已成功上传且没有变化的记录会跳过。\n'
              '服务地址与「上传与分享」一致。上传后仍需向蕾姆发送绑定指令确认更新。'),
-            ('auto_update', '自动检查并下载软件更新',
-             '默认开启。发行版启动及每 6 小时检查本项目更新，后台下载并校验，空闲时提示重启安装。\n'
+            ('auto_update', '启动时自动检查更新（下载前询问）',
+             '默认开启。发行版启动时检查本项目更新；发现新版先询问是否下载，校验后再确认安装。\n'
              '关闭后停止自动检查与下载；手动检查更新仍可使用。源码与演示模式不自动更新。'),
         ):
             checkbox = QCheckBox(title)
@@ -226,7 +248,7 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
         stats = overview(self.snapshot.gacha)
         times = [int(g.get('Time') or 0) for g in self.snapshot.gacha if g.get('Time')]
         dates = f'{datetime.fromtimestamp(min(times)):%Y.%m.%d} — {datetime.fromtimestamp(max(times)):%Y.%m.%d}' if times else '暂无有效时间'
-        self._settings.set_summary(f'{stats.total_pulls:,} 抽 · {stats.total_five} 个五星 · {sum(s is not None for s in stats.category_stats.values())}/4 类卡池\n归档批次 {len(self.snapshot.gacha)} · {dates}')
+        self._settings.set_summary(f'{stats.total_pulls:,} 抽 · {stats.total_five} 个五星 · {sum(s is not None for s in stats.category_stats.values())}/5 类卡池\n归档批次 {len(self.snapshot.gacha)} · {dates}')
         if not self.demo:
             self._refresh_account_picker(); self._refresh_uid_state(); self._refresh_account_view(); self._refresh_server_labels()
             self._settings.set_archive_path(str(active_data_dir(self.output)/'stellasora_gacha_archive.json'))
@@ -298,7 +320,7 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
                 self.status('读取到了 UID，但没有成功保存。'); return
             try:
                 path = refresh_share_file(self.output)
-            except OSError as exc:
+            except (OSError, ValueError) as exc:
                 self.status(f'UID 已保存，生成分享文件失败：{exc}')
                 return
             self.status(f'已读取并保存 UID {search.uid}' + (f' · 已导出 {path.name}' if path else ''))
@@ -441,8 +463,10 @@ class StellaSoraApp(AutomationMixin, BusinessWindow):
         event.acceptProposedAction()
         self._import_paths(paths)
 
-    def _backup_archive(self, uid: str) -> bool:
+    def _backup_archive(self, uid: str | None = None) -> bool:
         """导入前给目标账号的归档留一份备份; 返回 False 表示备份失败(应中止)。"""
+        if uid is None:
+            return super()._backup_archive()
         target = accounts.find_by_uid(self.output, uid) if uid else accounts.active_account(self.output)
         if uid and target is None:
             current = accounts.active_account(self.output)

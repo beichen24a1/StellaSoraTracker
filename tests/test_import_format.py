@@ -208,7 +208,7 @@ class ImportPersistTests(unittest.TestCase):
 
     def test_import_keeps_existing_history(self):
         with temp_workdir("keep_history") as directory:
-            service._write_archive(directory, {1: [group(10130, 500, [7])]})
+            service._write_archive(directory, {1: [group(10130, 500, [7])]}, uid='100872990')
             source = directory / "share.json"
             source.write_text(json.dumps(wrapper_payload()), encoding="utf-8")
 
@@ -241,7 +241,7 @@ class ImportPersistTests(unittest.TestCase):
 
     def test_uid_from_import_wins_over_an_older_one(self):
         with temp_workdir("uid_priority") as directory:
-            service._write_archive(directory, {1: [group(10130, 1, [1])]}, uid="111")
+            service._write_archive(directory, {1: [group(10130, 500, [1])]}, uid="111111111")
             source = directory / "share.json"
             source.write_text(json.dumps(wrapper_payload()), encoding="utf-8")
 

@@ -30,9 +30,10 @@ from pathlib import Path
 SERVER_CN = "cn"
 SERVER_INTL = "intl"
 SERVER_JP = "jp"
+SERVER_TW = "tw"
 
 # 语言 → 版本 key(内存识别用; 放在这里避免 client_lang ←→ server_config 循环导入)
-LANG_TO_SERVER = {"cn": SERVER_CN, "en": SERVER_INTL, "jp": SERVER_JP}
+LANG_TO_SERVER = {"cn": SERVER_CN, "en": SERVER_INTL, "jp": SERVER_JP, "tw": SERVER_TW}
 
 CONFIG_FILENAME = "server.json"
 ENV_KEY = "STELLASORA_SERVER"
@@ -64,6 +65,7 @@ PROFILES: dict[str, ServerProfile] = {
         key=SERVER_JP, label="日服",
         client_names=("StellaSora.exe",), api_lang="jp",
     ),
+    SERVER_TW: ServerProfile(key=SERVER_TW, label='台服', client_names=('StellaSora.exe',), api_lang='tw'),
 }
 
 _active: ServerProfile = PROFILES[SERVER_CN]

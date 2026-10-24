@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 
 from ..catalog import same_item_name, gacha_item_name, is_five_star_item
 from ..gacha_stats import build_banner_stats_with_shared_pity
+from ..gacha_display import SparkReward, insert_spark_rewards
 from ..official_banners import is_activity_pool, official_pool_info, pool_display_name
 from .constants import GACHA_CATEGORY_ORDER, GACHA_CATEGORY_NAMES, GACHA_CATEGORY_PITY_LIMITS, OFFICIAL_LIMITED_POOL_INFO
 from .beta_model import overview, categories, is_up, activity_pools
@@ -130,7 +131,7 @@ class PoolCard(Card):
         name = GACHA_CATEGORY_NAMES[cat].replace('招募','')
         top.addWidget(label(name,15,p.TEXT,True))
         top.addStretch()
-        top.addWidget(badge('限时' if 'limited' in cat else '常驻'))
+        top.addWidget(badge('特选' if cat == 'anniversary_selected' else '限时' if 'limited' in cat else '常驻'))
         self.body().addLayout(top)
         numbers = QHBoxLayout()
         total = stats.total_pulls if stats else 0
@@ -185,18 +186,21 @@ class HomeView(QWidget):
         self.col.setAlignment(Qt.AlignTop)
         root.addWidget(scroll(wrap))
         self.cards = []
+        self.column_choice = None
 
     def render(self, records):
         clear_layout(self.col)
         self.cards = []
         p = get_palette()
         stats = overview(records)
-        pulls = sorted([pull for s in stats.category_stats.values() if s for pull in s.five_stars],key=lambda pull:pull.timestamp,reverse=True)
+        pulls = sorted([pull for groups in categories(records).values()
+                        for pool in build_banner_stats_with_shared_pity(groups) for pull in pool.five_stars],
+                       key=lambda pull:pull.timestamp,reverse=True)
         title_row = QHBoxLayout()
         title_col = QVBoxLayout()
         title_col.setSpacing(4)
         title_col.addWidget(label('招募总览' if self.variant != 'journal' else '我的相遇手札',25,p.TEXT,True))
-        title_col.addWidget(label('四类卡池 · 本地归档 · 每一次相遇都有迹可循',12,p.MUTED))
+        title_col.addWidget(label('五类卡池 · 本地归档 · 每一次相遇都有迹可循',12,p.MUTED))
         title_row.addLayout(title_col)
         title_row.addStretch()
         title_row.addWidget(badge('演示记录' if self.demo else '本地记录'))
@@ -244,7 +248,7 @@ class HomeView(QWidget):
         section = QHBoxLayout()
         section.addWidget(label('卡池档案' if self.variant == 'journal' else '卡池概览',16,p.TEXT,True))
         section.addStretch()
-        section.addWidget(label(f'{sum(s is not None for s in stats.category_stats.values())} / 4 类已有归档',11,p.MUTED))
+        section.addWidget(label(f'{sum(s is not None for s in stats.category_stats.values())} / {len(GACHA_CATEGORY_ORDER)} 类已有归档',11,p.MUTED))
         self.col.addLayout(section)
         self.grid = QGridLayout()
         self.grid.setSpacing(16)
@@ -296,7 +300,7 @@ class HomeView(QWidget):
 
     def _reflow(self):
         if not self.cards: return
-        columns = 4 if self.variant == 'journal' and self.width() >= 1080 else 2 if self.width() >= 650 else 1
+        columns = self.column_choice or (4 if self.variant == 'journal' and self.width() >= 1080 else 2 if self.width() >= 650 else 1)
         if columns == self._columns: return
         for card in self.cards: self.grid.removeWidget(card)
         for i,card in enumerate(self.cards): self.grid.addWidget(card,i//columns,i%columns)
@@ -382,21 +386,24 @@ class RecordsView(QWidget):
         activity = self.current == 'activity'
         selected = GACHA_CATEGORY_ORDER if self.current in ('all', 'activity') else [self.current]
         keep = is_activity_pool if activity else (lambda _gid: True)
-        self.summary.setText('按时间倒序 · 限时卡池垫抽跨池继承 · UP 与歪分别标注')
+        self.summary.setText('按时间倒序 · 五星间隔按任意五星重置 · 首页另算 UP 保底 · 周年独立')
+        self.summary.setWordWrap(True)
         if self.all_pulls:
             self._table(grouped, selected, keep)
             return
         count = 0
         p = get_palette()
+        rewards = overview(records).rewards
         for cat in selected:
-            pools = build_banner_stats_with_shared_pity(grouped[cat],is_up=is_up if 'limited' in cat else None)
+            pools = build_banner_stats_with_shared_pity(grouped[cat])
             for pool in pools:
                 if not keep(pool.gid):
                     continue
                 info = official_pool_info(pool.gid)
                 name = info[0] if info else (GACHA_CATEGORY_NAMES[cat] if pool.gid in (1,2) else pool_display_name(pool.gid))
                 match_pool = self.query in name.casefold()
-                hits = [pull for pull in pool.five_stars if not self.query or match_pool or self.query in pull.name.casefold()]
+                entries = insert_spark_rewards(pool.five_stars, {pool.gid: rewards[pool.gid]} if pool.gid in rewards else {})
+                hits = [pull for pull in entries if not self.query or match_pool or self.query in pull.name.casefold()]
                 if self.query and not hits and not match_pool: continue
                 card = Card(pad=20)
                 top = QHBoxLayout()
@@ -421,9 +428,14 @@ class RecordsView(QWidget):
                     tl.addWidget(AvatarLabel(pull.item_id,pull.kind,56))
                     names = QVBoxLayout()
                     names.addWidget(label(pull.name,13,p.TEXT,True))
-                    names.addWidget(label(f'{pull.pity} 抽 · {date(pull.timestamp)}',11,p.MUTED))
+                    reward = isinstance(pull, SparkReward)
+                    text = f'井 · 120 抽奖励 · {date(pull.last_pull_time)}' if reward else f'五星间隔 {pull.pity} 抽 · {date(pull.timestamp)}'
+                    names.addWidget(label(text,11,p.MUTED))
                     tl.addLayout(names,1)
-                    if info: tl.addWidget(badge('UP' if same_item_name(pull.name,info[3]) else '歪',p.PRIMARY if same_item_name(pull.name,info[3]) else p.DANGER))
+                    if reward:
+                        tl.addWidget(badge('井',p.ACCENT))
+                    elif info and cat != 'anniversary_selected':
+                        tl.addWidget(badge('UP' if same_item_name(pull.name,info[3]) else '歪',p.PRIMARY if same_item_name(pull.name,info[3]) else p.DANGER))
                     flow.addWidget(tile)
                 fw = QWidget(); fw.setLayout(flow)
                 if not hits: card.add(label('此卡池已有归档，暂未获得五星。',12,p.MUTED))
