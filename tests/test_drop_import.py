@@ -87,7 +87,7 @@ class DropImportTests(unittest.TestCase):
                           Qt.LeftButton, Qt.NoModifier)
         self.window.dropEvent(drop)
         self.assertTrue(drop.isAccepted())
-        archive = next((self.work / "out").rglob("stellasora_gacha_archive.json"))
+        archive = self.work / 'out' / '100872990.json'
         payload = json.loads(archive.read_text(encoding="utf-8"))
         self.assertEqual(payload["uid"], "100872990")
         self.assertEqual(sorted(payload["categories"]), ["1", "3"])
@@ -102,7 +102,7 @@ class DropImportTests(unittest.TestCase):
             drop = QDropEvent(QPoint(5, 5), Qt.CopyAction, mime,
                               Qt.LeftButton, Qt.NoModifier)
             self.window.dropEvent(drop)
-        archive = next((self.work / "out").rglob("stellasora_gacha_archive.json"))
+        archive = self.work / 'out' / '100872990.json'
         payload = json.loads(archive.read_text(encoding="utf-8"))
         groups = sum(len(value) for value in payload["categories"].values())
         pulls = sum(len(group.get("Ids") or []) for groups in payload["categories"].values()
@@ -121,8 +121,8 @@ class DropImportTests(unittest.TestCase):
         QApplication.sendEvent(child, enter)
         drop = QDropEvent(QPoint(5, 5), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier)
         QApplication.sendEvent(child, drop)
-        archive = next((self.work / "out").rglob("stellasora_gacha_archive.json"), None)
-        self.assertIsNotNone(archive, "子控件上的拖放也必须导入")
+        archive = self.work / 'out' / '100872990.json'
+        self.assertTrue(archive.is_file(), "子控件上的拖放也必须导入")
         self.assertEqual(json.loads(archive.read_text(encoding="utf-8"))["uid"], "100872990")
 
     def test_manual_import_zone_exists_in_topbar(self):
@@ -148,8 +148,8 @@ class DropImportTests(unittest.TestCase):
         self.assertTrue(enter.isAccepted())
         drop = QDropEvent(QPoint(5, 5), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier)
         QApplication.sendEvent(zone, drop)
-        archive = next((self.work / "out").rglob("stellasora_gacha_archive.json"), None)
-        self.assertIsNotNone(archive)
+        archive = self.work / 'out' / '100872990.json'
+        self.assertTrue(archive.is_file())
         self.assertEqual(json.loads(archive.read_text(encoding="utf-8"))["uid"], "100872990")
 
     def test_demo_toggle_button_is_gone(self):

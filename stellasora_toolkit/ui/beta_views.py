@@ -441,7 +441,7 @@ class RecordsView(QWidget):
                     tl.addLayout(names,1)
                     if reward:
                         tl.addWidget(badge('井',p.ACCENT))
-                    elif info and info[3]:
+                    elif cat in ('traveler_limited', 'disc_limited') and info and info[3]:
                         tl.addWidget(badge('UP' if same_item_name(pull.name,info[3]) else '歪',p.PRIMARY if same_item_name(pull.name,info[3]) else p.DANGER))
                     flow.addWidget(tile)
                 fw = QWidget(); fw.setLayout(flow)
@@ -466,7 +466,8 @@ class RecordsView(QWidget):
                     name = gacha_item_name(iid)
                     if self.query and self.query not in (name+pool_name).casefold(): continue
                     star = is_five_star_item(iid)
-                    result = 'UP' if star and info and same_item_name(name,info[3]) else '歪' if star and info else '—'
+                    has_up = cat in ('traveler_limited', 'disc_limited') and info and bool(info[3])
+                    result = ('UP' if same_item_name(name,info[3]) else '歪') if star and has_up else '—'
                     rows.append((date(group.get('Time',0)),name,'五星' if star else '普通',pool_name,result))
         table = QTableWidget(len(rows),5)
         table.setHorizontalHeaderLabels(['日期','旅人 / 秘纹','稀有度','所属卡池','结果'])

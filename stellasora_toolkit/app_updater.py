@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -62,21 +63,22 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _version_tuple(value: str) -> tuple[int, ...]:
+def _version_tuple(value: str) -> tuple[tuple[int, ...], int, int]:
     text = value.strip().lower().removeprefix("v")
-    # 去掉预发布/build 元数据(如 1.2.17-beta.1 / 1.2.17+abc)后再比较
-    core = text.split("-")[0].split("+")[0]
-    parts = core.split(".")
-    if not parts or any(not part.isdigit() for part in parts):
+    match = re.fullmatch(r'(\d+(?:\.\d+)*)(?:[.-]?(alpha|a|bata|beta|b|rc)[.-]?(\d+))?', text.split('+')[0])
+    if match is None:
         raise ValueError(f"invalid version: {value}")
-    return tuple(int(part) for part in parts)
+    stage = {'alpha': 0, 'a': 0, 'bata': 1, 'beta': 1, 'b': 1, 'rc': 2, None: 3}[match[2]]
+    return tuple(int(part) for part in match[1].split('.')), stage, int(match[3] or 0)
 
 
 def is_newer_version(candidate: str, current: str) -> bool:
-    candidate_parts = _version_tuple(candidate)
-    current_parts = _version_tuple(current)
+    candidate_parts, candidate_stage, candidate_number = _version_tuple(candidate)
+    current_parts, current_stage, current_number = _version_tuple(current)
     length = max(len(candidate_parts), len(current_parts))
-    return candidate_parts + (0,) * (length - len(candidate_parts)) > current_parts + (0,) * (length - len(current_parts))
+    candidate_key = (candidate_parts + (0,) * (length - len(candidate_parts)), candidate_stage, candidate_number)
+    current_key = (current_parts + (0,) * (length - len(current_parts)), current_stage, current_number)
+    return candidate_key > current_key
 
 
 def parse_update_manifest(manifest: object) -> AppUpdate:
