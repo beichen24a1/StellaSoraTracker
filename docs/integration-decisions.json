@@ -25,7 +25,8 @@
     ],
     "verdict": "keepA",
     "note": "2026-10-25 用户确认全局导航沿用 A 的左侧菜单。",
-    "feature": "全局导航"
+    "feature": "全局导航",
+    "implementation_status": "implemented"
   },
   {
     "id": 3,
@@ -150,8 +151,9 @@
       "人工判断— 未判断 —保留 A采用 B两者融合不做 / 删掉暂不处理待定 / 待议等待与其他开发者讨论（归档目录结构与迁移规则）"
     ],
     "verdict": "useB",
-    "note": "2026-10-25 用户确认主归档采用 B 的 exports/<UID>.json；实现位于 codex/flat-uid-archives 开发分支，尚未合入 main。",
-    "feature": "归档目录结构"
+    "note": "1.3.0.bata1 已整合 exports/<UID>.json 主归档、保留原文件的按 UID 迁移、账号切换、分享上传、备份与跨进程事务保护。",
+    "feature": "归档目录结构",
+    "implementation_status": "implemented"
   },
   {
     "id": 12,
@@ -416,7 +418,7 @@
       "人工判断— 未判断 —保留 A采用 B两者融合不做 / 删掉暂不处理待定 / 待议等待未来实测（游戏内耗时与容错表现）"
     ],
     "verdict": "tbd",
-    "note": "等待未来实测（游戏内耗时与容错表现）",
+    "note": "待实机验收：内存扫描耗时、部分不可读数据处理和严格账号核验的组合表现。",
     "feature": "内存解析容错与扫描"
   },
   {
@@ -542,7 +544,7 @@
       "人工判断— 未判断 —保留 A采用 B两者融合不做 / 删掉暂不处理待定 / 待议等未来人工手动实测（按 ID + 哈希合并去重）"
     ],
     "verdict": "tbd",
-    "note": "等未来人工手动实测（按 ID + 哈希合并去重）",
+    "note": "待人工验收：按 ID 和哈希核对卡池资料、头像，确认合并范围与实际游戏显示。",
     "feature": "卡池表与资源数量"
   },
   {
@@ -627,7 +629,8 @@
     ],
     "verdict": "keepA",
     "note": "2026-10-25 用户表示两者均可，保留当前常驻提示和复制指令方案；每次上传仍需向蕾姆发送绑定指令确认。",
-    "feature": "绑定与确认"
+    "feature": "绑定与确认",
+    "implementation_status": "implemented"
   },
   {
     "id": 46,
@@ -695,9 +698,10 @@
       "共同仓库必须统一更新源并兼容旧客户端",
       "人工判断— 未判断 —保留 A采用 B两者融合不做 / 删掉暂不处理待定 / 待议合并后会建新仓库，更新源与渠道届时再定"
     ],
-    "verdict": "tbd",
-    "note": "合并后会建新仓库，更新源与渠道届时再定",
-    "feature": "更新渠道与源代码运行"
+    "verdict": "keepA",
+    "note": "v1.3.0 发版已统一到 beichen24a1/StellaSoraTracker 的 GitHub 更新清单；源码运行保留 A 的手动检查与打开下载页。",
+    "feature": "更新渠道与源代码运行",
+    "implementation_status": "implemented"
   },
   {
     "id": 51,
@@ -709,9 +713,10 @@
       "P1：A 当前更新包链接不匹配；本次仅报告，没有修改清单或发布任何版本",
       "人工判断— 未判断 —保留 A采用 B两者融合不做 / 删掉暂不处理待定 / 待议P1：并入新仓库时修复更新清单与 release tag（v1.2.39 指向 404）"
     ],
-    "verdict": "tbd",
-    "note": "P1：并入新仓库时修复更新清单与 release tag（v1.2.39 指向 404）",
-    "feature": "当前 GitHub 更新清单是否对应实际发行包"
+    "verdict": "keepA",
+    "note": "v1.3.0 已修复清单、tag 和资产链接对应关系，并验证线上更新检查与资产哈希。",
+    "feature": "当前 GitHub 更新清单是否对应实际发行包",
+    "implementation_status": "implemented"
   },
   {
     "id": 52,
@@ -767,7 +772,8 @@
     ],
     "verdict": "keepA",
     "note": "2026-10-25 用户确认：继续只提供 Windows 免安装 ZIP，不另提供 Inno 安装包；随 ZIP 附带 LICENSE 与 README 署名说明。",
-    "feature": "构建渠道与依赖"
+    "feature": "构建渠道与依赖",
+    "implementation_status": "implemented"
   },
   {
     "id": 56,
@@ -808,7 +814,8 @@
       "人工判断— 未判断 —保留 A采用 B两者融合不做 / 删掉暂不处理待定 / 待议并入新仓库时统一版本号、许可证与署名"
     ],
     "verdict": "both",
-    "note": "2026-10-25 用户确认两位原作者均已同意 MIT；已添加正式 LICENSE、同步项目元数据，并在 README 顶部保留 sfjdk、zhenkotone 及原贡献者来源署名，列明 beichen24a1 的整合协调与维护职责。本次不更新版本号、不发版。",
-    "feature": "许可证与版本号"
+    "note": "用户确认两位原作者均已同意 MIT；已添加正式 LICENSE、README 来源署名及 ZIP 许可说明。发行显示名称为 1.3.0.bata1，Python 包元数据按规范使用 1.3.0b1。",
+    "feature": "许可证与版本号",
+    "implementation_status": "implemented"
   }
 ]

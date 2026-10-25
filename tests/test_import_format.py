@@ -178,16 +178,16 @@ class ImportParsingTests(unittest.TestCase):
 class ImportPersistTests(unittest.TestCase):
     def test_import_merges_into_archive_and_keeps_uid(self):
         with temp_workdir("merge_uid") as directory:
-            source = directory / "100872990.json"
+            source = directory / "incoming.json"
             source.write_text(json.dumps(wrapper_payload()), encoding="utf-8")
 
             result = service.import_gacha_file(directory, source)
 
             self.assertEqual(result.added_groups, GROUP_COUNT)
             self.assertEqual(result.uid, "100872990")
-            # 归档落在当前账号目录下(多账号), 通过公开 API 读回来校验
+            # 已登记 UID 的主归档直接位于 exports 根目录。
             archive = json.loads(
-                (service.active_data_dir(directory) / service.ARCHIVE_FILENAME).read_text(encoding="utf-8"))
+                service.active_archive_path(directory).read_text(encoding="utf-8"))
             self.assertEqual(archive["uid"], "100872990")
             self.assertEqual(archive["version"], 1)
             self.assertEqual(sorted(archive["categories"]), ["1", "2", "3", "4"])

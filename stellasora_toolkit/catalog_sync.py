@@ -80,7 +80,8 @@ def _read_url(url: str, progress: ProgressCallback | None = None,
 
 def _catalog_cache_path(state_path: Path | None) -> Path | None:
     """五星目录缓存与同步状态同目录(exports/)。"""
-    return Path(state_path).with_name(CATALOG_CACHE_FILENAME) if state_path else None
+    name = f'{Path(CATALOG_CACHE_FILENAME).stem}_{server_config.api_lang()}.json'
+    return Path(state_path).with_name(name) if state_path else None
 
 
 def _save_catalog_cache(path: Path | None, items: list[dict]) -> None:
@@ -387,7 +388,12 @@ def _augment_with_banner_names(fetched: list[dict],
             continue
         known.add(item_id)
         rarity = int(entry.get("rarity") or 5)
-        extra.append({"id": item_id, "kind": "traveler", "name": entry["name"],
+        # UP entries include both character and disc banners. Preserve the kind
+        # instead of poisoning the traveler table when either API is unavailable.
+        kind = entry.get('kind') or ('disc' if item_id >= 200000 else 'traveler')
+        if kind not in ('traveler', 'disc'):
+            continue
+        extra.append({"id": item_id, "kind": kind, "name": entry["name"],
                       "icon": "", "rarity": rarity, "five_star": rarity >= 5})
     if extra and progress:
         progress(f"角色接口不可用，改用卡池 UP 名单补了 {len(extra)} 个名字")

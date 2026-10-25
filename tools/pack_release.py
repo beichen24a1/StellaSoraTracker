@@ -31,13 +31,13 @@ from stellasora_toolkit.project import GITHUB_REPOSITORY  # noqa: E402
 
 SRC = ROOT / "release" / "github" / "StellaSoraGachaTool"
 RELEASE_DIR = ROOT / "release"
-MANIFESTS = (ROOT / "app_update.json", ROOT / "app_update_github.json")
+MANIFESTS = (ROOT / 'app_update_beta.json',) if 'bata' in APP_VERSION or 'beta' in APP_VERSION else (ROOT / "app_update.json", ROOT / "app_update_github.json")
 REPO = GITHUB_REPOSITORY
 EXCLUDED_PARTS = {"exports", "accounts", "account_sessions", "backups", "logs", "__pycache__"}
 EXCLUDED_NAMES = {
     "uid.json", "account.json", "accounts.json", "ui_settings.json", "fortune.json",
     "server.json", "stellasora_gacha_archive.json", "crash.log",
-    "rem_upload_state.json", "rem_upload_endpoint.txt",
+    "rem_upload_state.json", "rem_upload_endpoint.txt", "archive_layout.json", ".storage.lock",
 }
 DISTRIBUTION_NOTICES = ('LICENSE', 'README.md')
 

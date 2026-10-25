@@ -62,18 +62,32 @@ class FeatureParityTests(unittest.TestCase):
         self.window.settings._cb['account_switch'](first.key)
         self.assertEqual(self.window.snapshot.gacha[0]['Ids'],[157])
         self.assertEqual(self.window.settings._uid.text(),first.uid)
-        self.assertIn(f'accounts\\{first.key}\\',self.window.settings._archive_path.text())
-        self.assertTrue((accounts.data_dir(self.root,first.key)/f'{first.uid}.json').exists())
-        self.assertTrue((accounts.data_dir(self.root,second.key)/f'{second.uid}.json').exists())
+        self.assertEqual(str(self.root / f'{first.uid}.json'),self.window.settings._archive_path.text())
+        self.assertTrue((self.root/f'{first.uid}.json').exists())
+        self.assertTrue((self.root/f'{second.uid}.json').exists())
 
     def test_uid_memory_result_is_saved_to_current_account_and_share_matches(self):
         self.import_uid('100000001',157)
         self.window._on_uid_read({'search':UidSearch(uid='100000001',field_name='_uid')})
         directory = accounts.active_data_dir(self.root)
         self.assertEqual(service.load_manual_uid(directory),'100000001')
-        share = json.loads((directory/'100000001.json').read_text(encoding='utf-8'))
+        share = json.loads((self.root/'100000001.json').read_text(encoding='utf-8'))
         self.assertEqual(share['uid'],'100000001')
         self.assertEqual(share['categories']['1'][0]['Ids'],[157])
+
+    def test_manual_backup_and_copied_path_use_the_flat_primary(self):
+        from PySide6.QtWidgets import QApplication
+        self.import_uid('100000001',157)
+        path = self.root / '100000001.json'
+        before = path.read_bytes()
+        self.window._copy_archive_path()
+        self.assertEqual(QApplication.clipboard().text(), str(path))
+        with patch('stellasora_toolkit.ui.controller.QMessageBox.information') as notice:
+            self.window._backup_archive()
+        notice.assert_called_once()
+        backups = list((self.root / 'backups').glob('*.json'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), before)
 
     def test_theme_preserves_unsaved_uid_and_upload_page_state(self):
         """换主题会重建外壳: 设置页里没保存的 UID 输入、上传页的状态都得留住。"""

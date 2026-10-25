@@ -1,0 +1,6 @@
+{
+  "version": "1.3.0.bata1",
+  "url": "https://github.com/beichen24a1/StellaSoraTracker/releases/download/v1.3.0.bata1/StellaSoraGachaTool-1.3.0.bata1-win64.zip",
+  "sha256": "f01531adfdd6a24496d5a9b87037d87eade3894a0c4a35661f4542d6cc7bbc3b",
+  "notes": "# 1.3.0.bata1 · 整合测试版\n\n此版本名称按维护者指定保留为 `1.3.0.bata1`，GitHub 标记为预发布；仅提供 Windows 免安装 ZIP，不替换稳定版入口。\n\n- 主归档改为 `exports/<UID>.json`，按 UID 校验后迁移合并，旧文件保留；无 UID 旧档继续单独保存。\n- 增加跨进程事务锁，避免两个窗口同时导入或保存时覆盖记录；损坏分类停止写入。\n- 保留 main 最近的 UID 读取修复：玩家表优先、本地化 UID 标签支持、临时失败可重试，以及固定隐藏的上传地址。\n- 保留活动卡池展示和三套主题；使用说明页改为紧凑排布。\n- 修复语言缓存混用、秘纹兜底误分类及周年/常驻池错误的“UP/歪”显示。\n- 正式采用 MIT，README 列明来源署名，ZIP 附带 LICENSE 与 README。\n- 测试版使用独立更新清单，版本比较识别 `bata` 写法；Python 包元数据按规范使用 `1.3.0b1`。\n\n下载 `StellaSoraGachaTool-1.3.0.bata1-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`。更新器只由主程序调用，请不要手动双击 `StellaSoraUpdater.exe`。\n\n**升级前备份整个 `exports`。** 原档不会因迁移主动删除；若需要退回旧版，请使用升级前备份，避免把迁移后的副本误认为旧版最新记录。\n"
+}

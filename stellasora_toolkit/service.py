@@ -7,11 +7,12 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Iterable
 
-from . import accounts, server_config
+from . import accounts, server_config, archive_layout
 from .account_uid import UidSearch, find_account_uid
 from .account_verification import verified_uid_search
 from .account_guard import AccountSafetyError, check_process_account, check_account_records
 from .history_schema import HISTORY_CATEGORY_IDS
+from .storage_lock import serialized_storage, storage_transaction
 from .client_lang import detect_language
 from .discovery import LuaTableDiscovery
 from .exporter import (
@@ -244,30 +245,30 @@ def extract_snapshot(
 
     current_categories = sanitize_gacha_categories(raw_gacha)
     validate_categories(current_categories)
-    check_account_records(root, uid, current_categories)
-    if search.found and search.field_name:
-        # 按游戏里的 UID 归位: 已有该账号就切过去, 没有就新建, 记录写进它自己的目录
-        account = accounts.adopt_uid(root, uid)
-        if account is not None:
-            new_target = accounts.data_dir(root, account.key)
-            if new_target != target:
-                report(f"已切换到账号 {account.label}")
-                target = new_target
-                payload = read_archive_payload(target)
-            save_uid_field(target, search.field_name)
+    # The process scan is outside the lock; account selection and the entire
+    # read/merge/write transaction must use one fresh, serialized disk snapshot.
+    with storage_transaction(root):
+        check_account_records(root, uid, current_categories)
+        if search.found:
+            account = accounts.adopt_uid(root, uid)
+            if account is not None:
+                new_target = accounts.data_dir(root, account.key)
+                if new_target != target:
+                    report(f"已切换到账号 {account.label}")
+                    target = new_target
+                save_uid_field(target, search.field_name)
 
-    payload = read_owned_archive(target, uid)
-    categories = merge_gacha_categories(_categories_from_payload(payload), current_categories)
-    validate_categories(categories)
-    check_account_records(root, uid, categories)
-    check_process_account(root, pid, creation_time, uid)
-    gacha = [group for groups in categories.values() for group in groups]
-    files = list(export_all(target, gacha, None, categories, uid=uid))
-    _write_archive(target, categories, uid=uid)
-    # 每次刷新都产出与分享文件同格式的 <uid>.json
-    share = write_share_file(target, categories, uid)
-    if share is not None:
-        files.append(share)
+        payload = read_owned_archive(target, uid)
+        categories = merge_gacha_categories(_categories_from_payload(payload), current_categories)
+        validate_categories(categories)
+        check_account_records(root, uid, categories)
+        check_process_account(root, pid, creation_time, uid)
+        gacha = [group for groups in categories.values() for group in groups]
+        files = list(export_all(target, gacha, None, categories, uid=uid))
+        _write_archive(target, categories, uid=uid)
+        share = write_share_file(target, categories, uid)
+        if share is not None:
+            files.append(share)
     if not uid_note and share is not None:
         uid_note = "沿用已保存的 UID"
     if not uid and search.ambiguous:
@@ -295,7 +296,7 @@ def validate_categories(categories: dict) -> None:
 
 def read_owned_archive(directory: Path, uid: str) -> dict:
     """Read-only browsing may fall back; saving must never silently overwrite damaged data."""
-    path = Path(directory) / ARCHIVE_FILENAME
+    path = archive_layout.ensure_archive(directory)
     if path.exists():
         try:
             payload = json.loads(path.read_text(encoding='utf-8-sig'))
@@ -305,6 +306,13 @@ def read_owned_archive(directory: Path, uid: str) -> dict:
         payload = read_archive_payload(directory)
     if not isinstance(payload, dict):
         raise AccountSafetyError('归档内容无效，已停止保存')
+    # Validate the original object before the tolerant browsing adapter can drop
+    # malformed categories. A migrated archive needs the same protection as an old one.
+    raw_categories = payload.get('categories', {})
+    if (not isinstance(raw_categories, dict)
+            or any(key not in {'1', '2', '3', '4', '6'} or not isinstance(value, list)
+                   for key, value in raw_categories.items())):
+        raise AccountSafetyError('主归档分类内容损坏，已停止保存；请先备份 exports 并核对恢复，原文件未覆盖')
     categories = _categories_from_payload(payload)
     if categories and str(payload.get('uid') or '') != uid:
         raise AccountSafetyError('旧归档 UID 缺失或与当前账号不一致，已保留旧档并停止合并；请先核对归属')
@@ -334,7 +342,11 @@ def read_archive_payload(output_dir: Path) -> dict:
     stellasora_gacha_*.json 升上来的, 不该因为少一个归档文件名就丢数据。
     读不到任何东西返回 {}。
     """
-    archive = output_dir / ARCHIVE_FILENAME
+    try:
+        archive = archive_layout.ensure_archive(output_dir)
+    except AccountSafetyError:
+        # Browsing remains available, while every writer uses strict ensure_archive.
+        archive = Path(output_dir) / ARCHIVE_FILENAME
     try:
         payload = json.loads(archive.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -445,6 +457,7 @@ def load_account_categories(output_dir: Path, key: str) -> dict[int, list[dict]]
     return _categories_from_payload(read_archive_payload(accounts.data_dir(Path(output_dir), key)))
 
 
+@serialized_storage
 def refresh_share_file(output_dir: Path) -> Path | None:
     """按当前账号的归档与 UID 重新产出 <uid>.json(没 UID 或没记录时返回 None)。
 
@@ -462,6 +475,7 @@ def refresh_share_file(output_dir: Path) -> Path | None:
     return write_share_file(target, categories, uid)
 
 
+@serialized_storage
 def export_share_for_uid(output_dir: Path, uid_text: str = "") -> Path:
     """按 UID 导出分享文件 —— **文件名与内容必须来自同一个账号**。
 
@@ -507,14 +521,14 @@ def export_share_for_uid(output_dir: Path, uid_text: str = "") -> Path:
     return path
 
 
+@serialized_storage
 def write_share_file(output_dir: Path, categories: dict[int, list[dict]], uid: str) -> Path | None:
     """生成与网页版/分享文件完全同格式的 <uid>.json。
 
     键与顺序都和分享文件一致: version / uid / updatedAt / categories。
     UID 未知(没填过也没导入过带 uid 的文件)时不生成, 返回 None。
 
-    传进来的是"账号根目录"(带 accounts.json)时, 落到当前账号目录里 —— 分享文件
-    属于某个账号, 不该散在根目录里, 否则很容易和别的账号对上号。
+    已登记账号的主归档与分享文件统一为 exports/<UID>.json。
     """
     uid = normalize_uid(uid)
     if not uid:
@@ -522,8 +536,16 @@ def write_share_file(output_dir: Path, categories: dict[int, list[dict]], uid: s
     output_dir = Path(output_dir)
     if (output_dir / accounts.ACCOUNTS_FILENAME).is_file():
         output_dir = accounts.active_data_dir(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"{uid}.json"
+    _, owner, _ = archive_layout.context(output_dir)
+    if owner:
+        if uid != owner:
+            raise AccountSafetyError('归档 UID 与账号不一致，已停止保存')
+        path = archive_layout.ensure_archive(output_dir)
+        if path.exists():
+            read_owned_archive(output_dir, uid)
+    else:
+        path = output_dir / f'{uid}.json'
+    path.parent.mkdir(parents=True, exist_ok=True)
     _write_json_atomic(path, _archive_payload(categories, uid))
     return path
 
@@ -537,6 +559,8 @@ def _resolve_dir(output_dir: Path) -> Path:
     - 其它(全新目录) → 当前账号目录(读取方不需要先建账号)。
     """
     root = Path(output_dir)
+    if root.parent.name == accounts.ACCOUNTS_DIRNAME:
+        return root
     if (root / accounts.ACCOUNTS_FILENAME).is_file():
         return accounts.data_dir(root, (accounts.active_account(root) or accounts.Account("")).key or None)
     if (root / ARCHIVE_FILENAME).is_file():
@@ -554,8 +578,12 @@ def _account_uid(output_dir: Path) -> str:
 
 
 def active_data_dir(output_dir: Path) -> Path:
-    """当前账号的数据目录(归档/分享文件都放这里; 供 server_upload 等调用方使用)。"""
+    """当前账号的独立配置及旧导出目录。"""
     return _resolve_dir(Path(output_dir))
+
+
+def active_archive_path(output_dir: Path) -> Path:
+    return archive_layout.archive_path(_resolve_dir(Path(output_dir)))
 
 
 def count_pulls(categories: dict[int, list[dict]]) -> int:
@@ -563,6 +591,7 @@ def count_pulls(categories: dict[int, list[dict]]) -> int:
     return sum(len(group.get("Ids") or []) for groups in categories.values() for group in groups)
 
 
+@serialized_storage
 def merge_accounts(output_dir: Path, source_key: str, target_key: str) -> tuple[int, int]:
     """把 source 账号的记录并入 target 账号(按 (Gid,Time,Ids) 合并, 幂等)。
 
@@ -605,10 +634,7 @@ def merge_accounts(output_dir: Path, source_key: str, target_key: str) -> tuple[
 
 def _write_json_atomic(path: Path, payload: dict) -> None:
     """临时文件 + 原子替换: 中途崩溃不会留下半截 JSON。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    archive_layout.write_atomic(path, payload)
 
 
 def _archive_payload(categories: dict[int, list[dict]], uid: str = "") -> dict:
@@ -622,9 +648,16 @@ def _archive_payload(categories: dict[int, list[dict]], uid: str = "") -> dict:
     return payload
 
 
+@serialized_storage
 def _write_archive(output_dir: Path, categories: dict[int, list[dict]], uid: str = "") -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    _write_json_atomic(output_dir / ARCHIVE_FILENAME, _archive_payload(categories, uid))
+    path = archive_layout.ensure_archive(output_dir)
+    _, owner, _ = archive_layout.context(output_dir)
+    if owner and owner != uid:
+        raise AccountSafetyError('归档 UID 与账号不一致，已停止保存')
+    if owner and path.exists():
+        read_owned_archive(output_dir, uid)
+    _write_json_atomic(path, _archive_payload(categories, uid))
+    archive_layout.ensure_archive(output_dir)
 
 
 @dataclass(frozen=True)
@@ -639,6 +672,7 @@ class ImportResult:
     share_file: Path | None = None
 
 
+@serialized_storage
 def import_gacha_file(output_dir: Path, source: Path) -> ImportResult:
     """把外部抽卡数据文件合并进本地归档并落盘。
 
@@ -708,7 +742,10 @@ def load_latest_snapshot(output_dir: Path) -> Snapshot | None:
     target = _resolve_dir(Path(output_dir))
     # Imports update the canonical archive but do not rewrite older timestamped exports.
     # Prefer the complete merged archive on restart/account switch.
-    archive = target / ARCHIVE_FILENAME
+    try:
+        archive = archive_layout.ensure_archive(target)
+    except AccountSafetyError:
+        archive = target / ARCHIVE_FILENAME
     if archive.is_file():
         try:
             payload = json.loads(archive.read_text(encoding="utf-8"))

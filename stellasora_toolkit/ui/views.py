@@ -529,19 +529,19 @@ class HelpView(QWidget):
         super().__init__(parent)
         outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0)
         wrap = QWidget(); col = QVBoxLayout(wrap)
-        col.setContentsMargins(24, 20, 24, 24); col.setSpacing(10)
+        col.setContentsMargins(24, 20, 24, 24); col.setSpacing(8)
         outer.addWidget(_scroll(wrap))
         col.addWidget(mk_label("使用说明与风险提示", role="h1"))
         col.addWidget(mk_label("面向《星塔旅人》国服 Windows 客户端的非官方抽卡记录整理工具。", role="muted"))
         _section(col, "使用方法")
         for t in [
-            "1. 登录游戏进入主界面,在游戏内依次打开四类招募记录,等待每个列表显示。",
+            "1. 登录游戏进入主界面，在游戏内依次打开各类招募记录（含周年特选），等待每个列表显示。",
             "2. 回到工具点击抓取抽卡记录。读取完成后首页和招募记录页面自动更新。",
             "3. 新角色/秘纹图片随版本内置更新,可点击“检查更新”。",
         ]:
             col.addWidget(mk_label(t, role="body"))
         _section(col, "数据与备份")
-        col.addWidget(mk_label("每次刷新都会合并更新 exports/stellasora_gacha_archive.json。", role="body"))
+        col.addWidget(mk_label("每次抓取都会合并更新 exports/<UID>.json；无 UID 的旧档会单独保留。", role="body"))
         col.addWidget(mk_label("导出不含账号密码、Cookie、SDK token 或网络会话数据,请谨慎分享。", role="muted"))
         _section(col, "风险与免责声明", danger=True)
         for t in [
@@ -553,6 +553,8 @@ class HelpView(QWidget):
             lb = mk_label(t, role="body")
             lb.setStyleSheet(f"color:{get_palette().DANGER if False else get_palette().MUTED};")
             col.addWidget(lb)
+        # Let unused window height collect below the text instead of stretching every row.
+        col.addStretch(1)
 
 
 # ---------------- 内部小部件/工具 ----------------
