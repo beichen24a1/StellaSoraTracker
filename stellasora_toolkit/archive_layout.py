@@ -11,6 +11,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
+from .storage_lock import serialized_storage
 
 LEGACY_NAME = 'stellasora_gacha_archive.json'
 RECEIPT_NAME = 'archive_layout.json'
@@ -89,6 +90,7 @@ def _read(path: Path, uid: str) -> dict:
     return dict(payload, uid=uid)
 
 
+@serialized_storage
 def ensure_archive(directory: Path) -> Path:
     """Prepare the flat archive, or fail before a writer can replace suspect data."""
     from .account_guard import AccountSafetyError

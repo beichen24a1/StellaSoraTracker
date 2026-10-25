@@ -19,7 +19,7 @@ class ReleasePackagingTests(unittest.TestCase):
                 "_internal/assets/travelers/133.png", "_internal/catalog.json",
                 "exports/accounts/100123456/100123456.json", "UID.JSON",
                 "accounts.json", "ui_settings.json", "fortune.json", "100123456.json",
-                "crash.log", "logs/session.log", "stellasora_gacha_archive.json", "archive_layout.json",
+                "crash.log", "logs/session.log", "stellasora_gacha_archive.json", "archive_layout.json", ".storage.lock",
                 "account_sessions/20-1000.json", "account_sessions/20-1000.blocked",
             )
             for name in files:

@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import time
 from . import archive_layout
+from .storage_lock import serialized_storage
 
 ACCOUNTS_FILENAME = "accounts.json"
 ACCOUNTS_DIRNAME = "accounts"
@@ -101,6 +102,7 @@ def _write_json_atomic(path: Path, payload: dict) -> bool:
         return False
 
 
+@serialized_storage
 def save_state(output_dir: Path, state: AccountState) -> bool:
     payload = {
         "active": state.active,
@@ -146,6 +148,7 @@ def _migrate_legacy(output_dir: Path, key: str, uid: str) -> None:
             pass
 
 
+@serialized_storage
 def load_state(output_dir: Path) -> AccountState:
     """读账号清单; 缺失(老数据)时先迁移出一个账号。"""
     output_dir = Path(output_dir)
@@ -238,6 +241,7 @@ def find_by_uid(output_dir: Path, uid: str) -> Account | None:
     return None
 
 
+@serialized_storage
 def switch(output_dir: Path, key: str) -> bool:
     state = load_state(output_dir)
     if not any(account.key == key for account in state.accounts):
@@ -245,6 +249,7 @@ def switch(output_dir: Path, key: str) -> bool:
     return save_state(output_dir, AccountState(state.accounts, key))
 
 
+@serialized_storage
 def create(output_dir: Path, *, uid: str = "", name: str = "") -> Account | None:
     """新建账号(同 UID 已存在则直接返回它)。
 
@@ -292,6 +297,7 @@ def archive_group_count(output_dir: Path, key: str) -> int:
     return sum(len(v) for v in categories.values() if isinstance(v, list))
 
 
+@serialized_storage
 def repair(output_dir: Path) -> str:
     """启动时的小修小补, 返回给用户看的一句话(空串表示无事发生)。
 
@@ -329,6 +335,7 @@ def repair(output_dir: Path) -> str:
     return "；".join(notes)
 
 
+@serialized_storage
 def rename(output_dir: Path, key: str, name: str) -> bool:
     state = load_state(output_dir)
     accounts = tuple(
@@ -339,6 +346,7 @@ def rename(output_dir: Path, key: str, name: str) -> bool:
     return save_state(output_dir, AccountState(accounts, state.active))
 
 
+@serialized_storage
 def set_uid(output_dir: Path, key: str, uid: str) -> bool:
     """给某个账号登记 UID(手填或从游戏读到的)。"""
     uid = str(uid or "").strip()
@@ -349,6 +357,7 @@ def set_uid(output_dir: Path, key: str, uid: str) -> bool:
     return save_state(output_dir, AccountState(accounts, state.active))
 
 
+@serialized_storage
 def remove(output_dir: Path, key: str) -> bool:
     """删除账号(目录改名为 <key>.deleted_<时间> 保留数据, 不真删)。"""
     state = load_state(output_dir)
@@ -383,6 +392,7 @@ def remove(output_dir: Path, key: str) -> bool:
         return False
 
 
+@serialized_storage
 def adopt_uid(output_dir: Path, uid: str) -> Account | None:
     """按 UID 找账号; 没有就把它记到当前账号头上(当前账号还没 UID 时), 否则新建。
 

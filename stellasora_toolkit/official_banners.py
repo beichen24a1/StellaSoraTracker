@@ -104,7 +104,8 @@ def parse_banners(payload: list[dict]) -> dict[int, tuple[str, str, str, str]]:
                     continue
                 label = str(entry.get("name") or "").strip()
                 if item_id and label:
-                    collected.append({"id": item_id, "name": label, "rarity": rarity})
+                    collected.append({"id": item_id, "name": label, "rarity": rarity,
+                                      "kind": 'disc' if item_id >= 200000 else 'traveler'})
     _types.clear()
     _types.update(types)
     _rate_up.clear()

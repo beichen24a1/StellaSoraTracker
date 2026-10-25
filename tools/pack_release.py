@@ -37,7 +37,7 @@ EXCLUDED_PARTS = {"exports", "accounts", "account_sessions", "backups", "logs", 
 EXCLUDED_NAMES = {
     "uid.json", "account.json", "accounts.json", "ui_settings.json", "fortune.json",
     "server.json", "stellasora_gacha_archive.json", "crash.log",
-    "rem_upload_state.json", "rem_upload_endpoint.txt", "archive_layout.json",
+    "rem_upload_state.json", "rem_upload_endpoint.txt", "archive_layout.json", ".storage.lock",
 }
 
 
