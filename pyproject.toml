@@ -9,7 +9,7 @@ description = "Read-only StellaSora gacha and character emblem exporter"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["Pillow>=10", "PySide6>=6.8"]
-license = { text = "Private research tool" }
+license = { file = "LICENSE" }
 
 [project.scripts]
 stellasora-export = "stellasora_toolkit.cli:main"

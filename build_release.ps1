@@ -54,6 +54,7 @@ New-Item -ItemType Directory -Path $output -Force | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Application build failed for $target." }
 
 Copy-Item -LiteralPath "dist\StellaSoraUpdater.exe" -Destination "$output\StellaSoraGachaTool\StellaSoraUpdater.exe" -Force
+Copy-Item -LiteralPath (Join-Path $root 'LICENSE'), (Join-Path $root 'README.md') -Destination "$output\StellaSoraGachaTool" -Force
 } finally {
     $env:PATH = $originalPath
 }

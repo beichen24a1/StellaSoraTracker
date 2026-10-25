@@ -39,6 +39,7 @@ EXCLUDED_NAMES = {
     "server.json", "stellasora_gacha_archive.json", "crash.log",
     "rem_upload_state.json", "rem_upload_endpoint.txt",
 }
+DISTRIBUTION_NOTICES = ('LICENSE', 'README.md')
 
 
 def is_runtime_data(path: Path) -> bool:
@@ -64,9 +65,13 @@ def build_zip(version: str, src: Path) -> Path:
                 if not path.is_file():
                     continue
                 relative = path.relative_to(src)
+                if len(relative.parts) == 1 and relative.name.casefold() in {name.casefold() for name in DISTRIBUTION_NOTICES}:
+                    continue  # Always use current repository notices, never stale build copies.
                 if is_runtime_data(relative):
                     continue
                 archive.write(path, f"{top}/{relative.as_posix()}")
+            for name in DISTRIBUTION_NOTICES:
+                archive.write(ROOT / name, f'{top}/{name}')
         with zipfile.ZipFile(temporary) as archive:
             leaked = [n for n in archive.namelist() if is_runtime_data(Path(n))]
         if leaked:
