@@ -2,11 +2,27 @@
 
 本仓库整合自 [sfjdk/StellaSoraTracker](https://github.com/sfjdk/StellaSoraTracker) 和 [zhenkotone/stellasora_gacha](https://github.com/zhenkotone/stellasora_gacha)，保留双方提交历史及上游来源记录。
 
+## 许可证与署名
+
+**本项目代码及自行编写的文档采用 [MIT 许可证](LICENSE)。** 两份来源项目的 MIT 授权已由维护者于 2026-10-25 确认。你可以使用、修改、分发及商业使用项目代码；分发副本或代码的实质部分时，须保留版权声明和许可文本。MIT 不要求修改后的代码必须公开。
+
+| 来源 / 维护者 | 署名说明 |
+| --- | --- |
+| [sfjdk](https://github.com/sfjdk) 及原项目贡献者 | 来源项目 [StellaSoraTracker](https://github.com/sfjdk/StellaSoraTracker) |
+| [zhenkotone](https://github.com/zhenkotone) 及原项目贡献者 | 来源项目 [stellasora_gacha](https://github.com/zhenkotone/stellasora_gacha) |
+| [beichen24a1](https://github.com/beichen24a1) | 整合协调与当前仓库维护 |
+
+具体代码贡献以保留的 Git 提交历史及 [上游来源记录](docs/upstream-imports.json) 为准。仓库所有权变更不替换原作者署名。后续免安装 ZIP 会随包附带 `LICENSE` 与本说明。
+
+MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素材的权利；这类素材及外部资料保留各自权利和适用条款。PySide6、Pillow 等依赖也继续适用各自许可证，本项目的 MIT 不替代它们。
+
 ## 下载 Windows 版本
 
 在 [最新发布页](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 下载 Windows 免安装 ZIP，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份旧目录中的 `exports`；不要只复制单个 exe。原 sfjdk 版可复制完整 `exports` 到新版程序旁；原 zhenkotone 版的 `<UID>.json` 可在「数据与设置」导入或拖入窗口，原文件请保留。
 
 本次更新与校验说明见 [v1.3.1 更新日志](docs/releases/v1.3.1.md)。
+
+发行形式继续只提供 Windows 免安装 ZIP，不另外提供安装向导版。
 
 ## 自动上传与软件更新
 
@@ -41,7 +57,7 @@
 
 ## 软件是做什么的
 
-功能取舍按 [人工判断记录](docs/integration-decisions.json) 实施，引用的上游文件和原始哈希见 [上游来源记录](docs/upstream-imports.json)。本版发行号和 GitHub 更新源已按实际发布仓库统一；归档目录、内存解析策略、资源人工核对、绑定提示、构建方案、许可证和全局导航保持现状，等待共同讨论。
+功能取舍按 [人工判断记录](docs/integration-decisions.json) 实施，引用的上游文件和原始哈希见 [上游来源记录](docs/upstream-imports.json)。全局导航已确定沿用 A，发行形式为免安装 ZIP，许可证为 MIT；绑定提示保留当前方案。`exports/<UID>.json` 归档迁移及后续审查修复目前位于 [开发分支](https://github.com/beichen24a1/StellaSoraTracker/tree/codex/flat-uid-archives)，尚未合入 main；以下目录说明对应当前 main。内存扫描实机验收仍需继续。
 
 ## 读取与归档保护
 
@@ -143,7 +159,7 @@
 - 建议定期使用设置页面的“创建备份”，或者手动备份 `exports/accounts/<账号>/stellasora_gacha_archive.json`。
 - 官方记录可能只保留最近半年。本地归档可以保留更早记录，但必须在官方记录过期前至少读取并保存一次。
 - 统计结果只基于当前已经读取并归档的数据。若早期记录缺失，首个五星的间隔和当前垫抽可能不完整。
-- 安装版适合日常使用；便携版移动时应将整个程序目录和 `exports` 数据一起保留。
+- 移动免安装版时，应将整个程序目录和 `exports` 数据一起保留。
 
 ## 注意事项与风险说明
 
@@ -152,6 +168,6 @@
 - “抓取抽卡记录”需要管理员权限，因为软件需要只读访问游戏进程。其他浏览和备份功能不需要读取游戏进程。
 - 虽然软件不注入、不修改游戏数据，但任何读取游戏进程的第三方工具都无法保证绝对没有账号或反作弊风险。请自行阅读游戏服务条款并评估风险。
 - 游戏更新可能改变 Lua 数据结构、字段名称或反作弊策略，导致读取失败、数据不完整或工具暂时不可用。
-- 请仅在自己的账号和设备上使用，不要将本工具用于违规、商业或破坏性用途。
+- 请在获得授权的账号和设备上使用，不要将本工具用于违规或破坏性用途；项目代码的商业使用按 MIT 许可证执行。
 - 导出的记录不包含账号密码、Cookie、SDK Token 或网络会话数据，但可能反映个人游戏行为，请谨慎分享。
 - 使用者自行承担使用本工具产生的后果。因数据不完整、游戏更新、账号处置、软件不可用或第三方服务变化造成的损失，项目维护者不承担责任。

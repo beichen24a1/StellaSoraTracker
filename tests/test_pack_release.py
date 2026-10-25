@@ -10,6 +10,21 @@ import json
 
 
 class ReleasePackagingTests(unittest.TestCase):
+    def test_zip_uses_current_notices_even_if_build_folder_has_old_copies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root/'source'
+            source.mkdir()
+            for name in ('LICENSE', 'readme.md'):
+                (source/name).write_text('stale build notice', encoding='utf-8')
+            with patch.object(pack_release, 'RELEASE_DIR', root/'release'):
+                result = pack_release.build_zip('fixture', source)
+            with zipfile.ZipFile(result) as archive:
+                self.assertEqual(set(archive.namelist()), {
+                    'StellaSoraGachaTool/LICENSE', 'StellaSoraGachaTool/README.md'})
+                for name in pack_release.DISTRIBUTION_NOTICES:
+                    self.assertEqual(archive.read('StellaSoraGachaTool/'+name), (pack_release.ROOT/name).read_bytes())
+
     def test_excludes_personal_data_but_keeps_program_and_assets(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -34,7 +49,10 @@ class ReleasePackagingTests(unittest.TestCase):
                     "StellaSoraGachaTool/StellaSoraUpdater.exe",
                     "StellaSoraGachaTool/_internal/assets/travelers/133.png",
                     "StellaSoraGachaTool/_internal/catalog.json",
+                    "StellaSoraGachaTool/LICENSE",
+                    "StellaSoraGachaTool/README.md",
                 })
+                self.assertEqual(archive.read('StellaSoraGachaTool/LICENSE'), (pack_release.ROOT/'LICENSE').read_bytes())
 
     def test_failed_rebuild_preserves_existing_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
