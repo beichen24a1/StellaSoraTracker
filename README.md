@@ -14,11 +14,11 @@
 
 具体代码贡献以保留的 Git 提交历史及 [上游来源记录](docs/upstream-imports.json) 为准。仓库所有权变更不替换原作者署名。后续免安装 ZIP 会随包附带 `LICENSE` 与本说明。
 
-MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素材的权利；这类素材及外部资料保留各自权利和适用条款。PySide6、Pillow 等依赖也继续适用各自许可证，本项目的 MIT 不替代它们。
+MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素材的权利；这类素材及外部资料保留各自权利和适用条款。Electron、Vue、Pillow 等依赖继续适用各自许可证，随包附有第三方许可；旧 Qt 开发入口中的 PySide6 也保留其许可，本项目的 MIT 不替代它们。
 
 ## 下载 Windows 版本
 
-### 开发中的 Electron 新版（尚未发版）
+### Electron 桌面版
 
 当前源码默认使用 **Vue 3 + TypeScript + Electron**，通过本地 JSON Lines 接口复用 Python 抓取、归档、防串号和上传逻辑。左侧五页布局保留，只有白/黑两种主题；首次默认白色，旧 A 映射黑色、旧 B/C 映射白色，选择保存在 `color_mode`，不覆盖旧主题字段。今日运势入口已移除。
 
@@ -30,17 +30,15 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 验证命令：`./.venv/Scripts/python.exe tools/run_tests.py`；前端目录执行 `npm test`、`npm run test:e2e`。冻结包与中文路径验收工具为 `tools/verify_electron_package.py`，会复制包到独立目录；为自动化测试调整的权限清单只作用于一次性测试副本，不改变交付 ZIP 的管理员启动要求。
 
-**以下已发布的 `1.3.0.bata1` 仍为旧 Qt 客户端，本次源码重写没有替换既有发行资产。**
+`1.3.0.bata2` 是首个 Electron 测试版；历史 `1.3.0.bata1` 保留为 Qt 客户端，原有发行资产不变。
 
 ### 已发布版本
 
-当前测试版为 [1.3.0.bata1](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata1)，下载 `StellaSoraGachaTool-1.3.0.bata1-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 exe。原 sfjdk 版可复制完整 `exports` 到新版程序旁；原 zhenkotone 版可在首次使用时识别根目录已有的有效 `<UID>.json`，也可使用导入，原文件请保留。[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 单独保留。
+当前测试版为 [1.3.0.bata2](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata2)，下载 `StellaSoraGachaTool-1.3.0.bata2-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 exe。原 sfjdk 版可复制完整 `exports` 到新版程序旁；原 zhenkotone 版可在首次使用时识别根目录已有的有效 `<UID>.json`，也可使用导入，原文件请保留。[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 单独保留。
 
-本次更新与校验说明见 [1.3.0.bata1 更新日志](docs/releases/v1.3.0.bata1.md)。版本拼写按维护者指定保留；Python 包元数据使用等价的规范写法 `1.3.0b1`。
+本次更新与校验说明见 [1.3.0.bata2 更新日志](docs/releases/v1.3.0.bata2.md)。版本拼写按维护者指定保留；Python 包元数据使用 `1.3.0b2`，Electron 元数据使用 `1.3.0-beta.2`。
 
 发行形式继续只提供 Windows 免安装 ZIP，不另外提供安装向导版。
-
-发行形式继续只提供免安装 ZIP，不另提供安装向导版。
 
 ## 自动上传与软件更新
 
@@ -55,7 +53,9 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 ## 界面主题
 
-Electron 新版仅提供白色和黑色，主题在“数据与设置”切换并记忆。下表及截图链接为旧 Qt 客户端的开发对照；旧版首次默认使用晴空工作台：
+Electron 版仅提供白色和黑色，主题在“数据与设置”切换并记忆；页面、导航、弹窗和任务面板带过渡动画，遵循系统“减少动态效果”设置。记录页以头像和五星间隔条展示紧凑的卡池历史，保留一列、两列和自动排布。
+
+下表及截图链接为旧 Qt 客户端的开发对照；旧版首次默认使用晴空工作台：
 
 | 方向 | 风格 |
 | --- | --- |
@@ -63,7 +63,7 @@ Electron 新版仅提供白色和黑色，主题在“数据与设置”切换�
 | B · 晴空工作台 | 冰蓝白、清晰统计、左侧导航 |
 | C · 旅人手札 | 雾紫纸张、相遇照片、卡池档案 |
 
-首次运行先安装项目依赖：`python -m venv .venv`，然后 `./.venv/Scripts/python.exe -m pip install -e .`。
+开发者首次运行可创建 `.venv` 并安装 `.[dev]`，按上方开发步骤启动 Electron；旧 Qt 对照入口需安装 `.[legacy-ui]`。ZIP 用户直接解压运行即可。
 
 三套主题的菜单均在左侧。主题、卡池列数和自动化偏好保存在输出目录的 `ui_settings.json`，账号切换不影响偏好。卡池详情可选择自动排布、一列、两列，并在重启后恢复。
 
@@ -169,7 +169,7 @@ Electron 新版仅提供白色和黑色，主题在“数据与设置”切换�
 
 | 功能 | 入口 |
 | --- | --- |
-| 三套主题、三服选择与自动识别 | 数据与设置 |
+| 白黑主题、四服选择与自动识别 | 数据与设置 |
 | 账号切换、新建、重命名、合并、可恢复删除 | 数据与设置 → 账号 |
 | 手填或读取 UID、导出 `<UID>.json` | 数据与设置 → UID 与分享文件 |
 | JSON/CSV 导入、导出、备份与检查更新 | 数据与设置 |
