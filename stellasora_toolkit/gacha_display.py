@@ -33,7 +33,7 @@ def build_spark_rewards(
     groups: Sequence[dict],
     banner_info: Mapping[int, tuple[str, str, str, str]],
 ) -> dict[int, SparkReward]:
-    names = {_normalize_name(name): item_id for item_id, name in TRAVELER_NAMES.items() if item_id in FIVE_STAR_TRAVELERS}
+    names = {_normalize_name(name): item_id for item_id, name in list(TRAVELER_NAMES.items()) if item_id in FIVE_STAR_TRAVELERS}
     periods: dict[int, tuple[int, int, int, str]] = {}
     for gid, (_title, start, end, name) in banner_info.items():
         item_id = names.get(_normalize_name(name))

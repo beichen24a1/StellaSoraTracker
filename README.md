@@ -18,6 +18,22 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 ## 下载 Windows 版本
 
+### 开发中的 Electron 新版（尚未发版）
+
+当前源码默认使用 **Vue 3 + TypeScript + Electron**，通过本地 JSON Lines 接口复用 Python 抓取、归档、防串号和上传逻辑。左侧五页布局保留，只有白/黑两种主题；首次默认白色，旧 A 映射黑色、旧 B/C 映射白色，选择保存在 `color_mode`，不覆盖旧主题字段。今日运势入口已移除。
+
+更新界面增加可滚动的更新说明、下载进度/速度/剩余时间、后台下载、取消、重试和稍后安装；已校验的更新包在重启后重新核验再恢复。任务与日志从底部状态栏打开，上传地址和归档原文不进入日志。完整迁移对照见 [功能对照表](docs/electron-parity.json)。
+
+开发环境需要 Node.js 22.12+、Python 3.10+；运行 `python -m pip install -e ".[dev]"` 后，用 `./run.ps1` 构建并打开新客户端。首次会通过 `npm ci` 安装前端依赖；旧 Qt 对照入口为 `./run_qt_legacy.ps1`。渲染器热更新可另起 `frontend` 中的 `npm run dev`，通过 `VITE_DEV_SERVER_URL` 连接；正式程序只加载本地打包页面。
+
+本地验收构建：`./build_electron.ps1`（或 `./build_release.ps1`），输出 `release/StellaSoraGachaTool-Electron-local-win64.zip`，不会更新正式版本号、发布清单或 tag。包内自带 Python 核心和 Electron 运行时，**不需要用户安装 Python，也不携带 PySide6 界面运行库**。启动保留一次管理员授权，数据仍在程序旁的 `exports`。Qt 构建仅供开发对照：`./build_qt_legacy.ps1`。
+
+验证命令：`./.venv/Scripts/python.exe tools/run_tests.py`；前端目录执行 `npm test`、`npm run test:e2e`。冻结包与中文路径验收工具为 `tools/verify_electron_package.py`，会复制包到独立目录；为自动化测试调整的权限清单只作用于一次性测试副本，不改变交付 ZIP 的管理员启动要求。
+
+**以下已发布的 `1.3.0.bata1` 仍为旧 Qt 客户端，本次源码重写没有替换既有发行资产。**
+
+### 已发布版本
+
 当前测试版为 [1.3.0.bata1](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata1)，下载 `StellaSoraGachaTool-1.3.0.bata1-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 exe。原 sfjdk 版可复制完整 `exports` 到新版程序旁；原 zhenkotone 版可在首次使用时识别根目录已有的有效 `<UID>.json`，也可使用导入，原文件请保留。[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 单独保留。
 
 本次更新与校验说明见 [1.3.0.bata1 更新日志](docs/releases/v1.3.0.bata1.md)。版本拼写按维护者指定保留；Python 包元数据使用等价的规范写法 `1.3.0b1`。
@@ -39,7 +55,7 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 ## 界面主题
 
-提供三套原生 PySide6 界面，首次默认使用晴空工作台，可在“数据与设置 → 界面主题”切换。程序会记住选择，下次启动自动恢复；切换时保留归档、卡池筛选、搜索条件和五星/全部记录浏览模式：
+Electron 新版仅提供白色和黑色，主题在“数据与设置”切换并记忆。下表及截图链接为旧 Qt 客户端的开发对照；旧版首次默认使用晴空工作台：
 
 | 方向 | 风格 |
 | --- | --- |

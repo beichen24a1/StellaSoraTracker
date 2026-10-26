@@ -1,0 +1,221 @@
+{
+  "baseline": "11f0156",
+  "excluded": [
+    "今日运势"
+  ],
+  "features": {
+    "capture": [
+      "具体进程选择",
+      "UID 玩家表优先",
+      "读取前后校验",
+      "防串号",
+      "自动归位"
+    ],
+    "accounts": [
+      "切换",
+      "新建",
+      "重命名",
+      "同 UID 合并",
+      "可恢复删除",
+      "手填 UID",
+      "游戏 UID"
+    ],
+    "records": [
+      "四类常规池",
+      "周年原始分类6",
+      "活动筛选",
+      "卡池列数",
+      "五星与全部记录",
+      "搜索",
+      "分页",
+      "UP保底与五星间隔"
+    ],
+    "files": [
+      "JSON/CSV",
+      "GB18030",
+      "拖放",
+      "导入前备份",
+      "导出",
+      "分享文件",
+      "手动备份",
+      "打开目录与复制路径"
+    ],
+    "resources": [
+      "名称",
+      "头像",
+      "卡池",
+      "语言缓存",
+      "离线回退"
+    ],
+    "upload": [
+      "固定隐藏接口",
+      "自动开关",
+      "手动上传",
+      "UID指纹去重",
+      "绑定指令",
+      "手动网页"
+    ],
+    "updates": [
+      "自动开关",
+      "双渠道",
+      "说明",
+      "下载进度",
+      "后台",
+      "取消",
+      "重试",
+      "SHA256",
+      "稍后安装恢复",
+      "退出进程",
+      "回滚"
+    ],
+    "preferences": [
+      "首次白色",
+      "旧A黑色旧BC白色",
+      "记忆",
+      "未知字段保留"
+    ],
+    "delivery": [
+      "免安装ZIP",
+      "无Python环境",
+      "无PySide6运行库",
+      "中文与空格路径",
+      "许可署名",
+      "隐私排除"
+    ]
+  },
+  "status": "implemented; verification results are recorded in the task and build reports",
+  "verification": {
+    "python": [
+      "existing core and Qt parity tests",
+      "tests/test_desktop_application.py",
+      "tests/test_electron_distribution.py"
+    ],
+    "frontend": [
+      "frontend/tests/unit/workflows.test.ts",
+      "frontend/tests/unit/version.test.ts"
+    ],
+    "electron": [
+      "frontend/tests/e2e/desktop.spec.ts",
+      "frontend/tests/e2e/update.spec.ts",
+      "frontend/tests/e2e/package.spec.ts",
+      "frontend/tests/e2e/large-archive.spec.ts"
+    ],
+    "packaging": [
+      "tools/pack_electron_local.py",
+      "tools/verify_electron_package.py"
+    ],
+    "live_game": "Existing memory-reading logic is retained; no new live-game capture was claimed during automated acceptance"
+  },
+  "entrypoints": [
+    {
+      "entry": "顶栏抓取 / 进程选择 / 设置 UID",
+      "behavior": "指定 PID；抓取前后验证 UID；自动识别服务器；禁止重贴已有归档 UID",
+      "tests": [
+        "test_desktop_application: process_pid/manual_uid",
+        "existing test_service/test_uid suites"
+      ]
+    },
+    {
+      "entry": "数据与设置 → 账号",
+      "behavior": "切换、新建、重命名、同 UID 合并、保留目录删除；合并前备份",
+      "tests": [
+        "test_desktop_application: account_crud",
+        "desktop.spec.ts",
+        "existing account and merge tests"
+      ]
+    },
+    {
+      "entry": "顶栏 / 拖放 / 设置 → 导入导出",
+      "behavior": "真实 JSON/CSV、GB18030、导入前备份、去重、分享文件、打开目录",
+      "tests": [
+        "test_desktop_application: import_export/backup_failure",
+        "desktop.spec.ts",
+        "existing exporter/service tests"
+      ]
+    },
+    {
+      "entry": "招募总览 / 招募记录",
+      "behavior": "复用旧统计核心；五星概率、均抽、保底、原始周年分类6；筛选搜索分页",
+      "tests": [
+        "test_desktop_application: raw_anniversary/100k/intervals",
+        "desktop.spec.ts",
+        "large-archive.spec.ts",
+        "existing gacha_stats/beta_model tests"
+      ]
+    },
+    {
+      "entry": "数据与设置 → 同步资源 / 服务器",
+      "behavior": "名称头像卡池补全；语言切换时拒绝过期响应；缓存回退",
+      "tests": [
+        "test_desktop_application: old_language_request",
+        "existing catalog_sync/official_banners tests"
+      ]
+    },
+    {
+      "entry": "上传与分享 / 自动上传开关",
+      "behavior": "固定现有隐藏接口；UID 校验与指纹去重；绑定指令与手动网页",
+      "tests": [
+        "test_desktop_application",
+        "desktop.spec.ts",
+        "existing rem_upload tests"
+      ]
+    },
+    {
+      "entry": "数据与设置 → 界面主题 / 列数",
+      "behavior": "白黑即时切换；旧主题映射；未知配置保留；切换时保留输入和筛选",
+      "tests": [
+        "test_desktop_application: theme_mapping",
+        "workflows.test.ts",
+        "desktop.spec.ts"
+      ]
+    },
+    {
+      "entry": "底部任务 / 重新连接",
+      "behavior": "阶段与脱敏日志；错误提示；后端退出后重连，原档不变",
+      "tests": [
+        "test_desktop_application: redacted/deadlock",
+        "desktop.spec.ts"
+      ]
+    },
+    {
+      "entry": "检查更新 / 更新弹窗",
+      "behavior": "说明、进度速度ETA、后台、取消重试、双渠道、稍后安装恢复、SHA256",
+      "tests": [
+        "test_desktop_application: UpdateWorkflowTests",
+        "workflows.test.ts",
+        "update.spec.ts",
+        "existing app_updater tests"
+      ]
+    },
+    {
+      "entry": "立即安装 / 更新器",
+      "behavior": "繁忙时拒绝替换；等待 Electron/Python 退出；保护 exports 和 .desktop；替换失败回滚",
+      "tests": [
+        "test_electron_distribution: updater_accepts_extra_processes",
+        "existing test_update_installer suite"
+      ]
+    },
+    {
+      "entry": "ZIP / 默认启动",
+      "behavior": "独立 Python 核心、生产管理员清单、隔离上下文沙箱、中文空格路径、运行数据排除",
+      "tests": [
+        "test_electron_distribution",
+        "verify_electron_package.py",
+        "package.spec.ts"
+      ]
+    }
+  ],
+  "acceptance": {
+    "pythonTests": 520,
+    "vueTests": 8,
+    "electronFlows": 4,
+    "largeArchiveRecords": 100000,
+    "releaseCreated": false,
+    "versionChanged": false,
+    "limitations": [
+      "未执行真实游戏客户端内存抓取；保留原抓取核心并通过原有测试。",
+      "操作系统 UAC 弹框未自动点击；交付 EXE 的 requireAdministrator 清单已校验，一次性自动化副本使用 asInvoker。",
+      "网络异常使用测试专用替身复现；未触发真实对外上传或生产更新安装。"
+    ]
+  }
+}

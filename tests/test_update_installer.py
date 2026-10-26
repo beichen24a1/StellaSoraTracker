@@ -51,20 +51,21 @@ class UpdateInstallerTests(unittest.TestCase):
             self.assertFalse((root / "outside.txt").exists())
 
     def test_rejects_packages_that_contain_user_data_directories(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            package = root / "update.zip"
-            self._write_package(
-                package,
-                {
-                    f"StellaSoraGachaTool/{APP_EXE_NAME}": b"new",
-                    "StellaSoraGachaTool/exports/history.json": b"must not overwrite",
-                },
-            )
-            destination = root / "extract"
-            destination.mkdir()
-            with self.assertRaises(ValueError):
-                extract_update_package(package, destination)
+        for private in ('exports', 'updates', 'backups', '.desktop'):
+            with self.subTest(directory=private), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                package = root / "update.zip"
+                self._write_package(
+                    package,
+                    {
+                        f"StellaSoraGachaTool/{APP_EXE_NAME}": b"new",
+                        f"StellaSoraGachaTool/{private}/history.json": b"must not overwrite",
+                    },
+                )
+                destination = root / "extract"
+                destination.mkdir()
+                with self.assertRaises(ValueError):
+                    extract_update_package(package, destination)
 
     def test_rolls_back_when_installing_new_files_fails(self):
         with tempfile.TemporaryDirectory() as directory:

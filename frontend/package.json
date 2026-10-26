@@ -1,0 +1,86 @@
+{
+  "name": "stellasora-tracker-desktop",
+  "version": "1.3.0-beta.1",
+  "private": true,
+  "description": "StellaSoraTracker desktop UI",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build && tsc -p tsconfig.electron.json",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "package:dir": "node scripts/package.mjs"
+  },
+  "build": {
+    "appId": "io.stellasora.tracker",
+    "productName": "StellaSoraGachaTool",
+    "asar": true,
+    "directories": {
+      "output": "../build/electron-package"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json",
+      "!node_modules/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../build/electron-engine/StellaSoraEngine",
+        "to": "engine"
+      },
+      {
+        "from": "../assets",
+        "to": "assets"
+      }
+    ],
+    "extraFiles": [
+      {
+        "from": "../dist/StellaSoraUpdater.exe",
+        "to": "StellaSoraUpdater.exe"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "../README.md",
+        "to": "README.md"
+      },
+      {
+        "from": "../build/THIRD_PARTY_NOTICES.txt",
+        "to": "THIRD_PARTY_NOTICES.txt"
+      }
+    ],
+    "win": {
+      "icon": "../assets/app_icon.ico",
+      "requestedExecutionLevel": "requireAdministrator",
+      "signAndEditExecutable": true
+    },
+    "electronDist": "node_modules/electron/dist"
+  },
+  "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
+    "ant-design-vue": "^4.2.6",
+    "pinia": "^4.1.0",
+    "vue": "^3.5.44",
+    "vue-router": "^4.6.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "@vue/test-utils": "^2.5.1",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "jsdom": "^30.1.3",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5",
+    "vue-tsc": "^3.3.13"
+  },
+  "author": "StellaSoraTracker contributors"
+}

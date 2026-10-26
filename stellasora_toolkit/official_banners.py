@@ -231,21 +231,24 @@ def active_banners() -> dict[int, tuple[str, str, str, str]]:
     return dict(_active) if _active else dict(OFFICIAL_LIMITED_POOL_INFO)
 
 
-def refresh_from_network(cache_path: Path, attempts: int = 2) -> bool:
+def refresh_from_network(cache_path: Path, attempts: int = 2, *, lang: str | None = None) -> bool:
     """后台线程用: 拉取 -> 写缓存 -> 更新进程内表。失败返回 False(静态表/缓存兜底)。
 
     重试一次: 站点偶发超时会让卡池名一直停在旧缓存(表现为"新卡池没有名字"),
     而调用方看不到任何提示。返回值让界面能说明"这次没更新成功"。
     """
+    lang = lang or server_config.api_lang()
     for attempt in range(max(1, attempts)):
         try:
-            banners = fetch_banners()
+            banners = fetch_banners(lang=lang)
         except (OSError, ValueError):
             if attempt + 1 < attempts:
                 time.sleep(1.0)
                 continue
             return False
         save_banners(banners, cache_path)
+        if lang != server_config.api_lang():
+            return False
         set_active_banners(banners)
         return True
     return False
