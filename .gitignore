@@ -14,3 +14,8 @@ ui-beta/*.log
 sites/
 .testtmp/
 fortune.json
+frontend/node_modules/
+frontend/dist/
+frontend/dist-electron/
+frontend/test-results/
+frontend/playwright-report/

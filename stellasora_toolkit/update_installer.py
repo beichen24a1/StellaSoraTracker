@@ -15,19 +15,25 @@ from pathlib import Path, PurePosixPath
 APP_EXE_NAME = "StellaSoraGachaTool.exe"
 UPDATER_EXE_NAME = "StellaSoraUpdater.exe"
 WAIT_TIMEOUT_SECONDS = 180
-PRESERVED_TOP_LEVELS = {"exports", "updates", "backups"}
+PRESERVED_TOP_LEVELS = {"exports", "updates", "backups", ".desktop"}
 
 
 def _log_path() -> Path:
     root = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "StellaSoraGachaTool" / "logs"
-    root.mkdir(parents=True, exist_ok=True)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return Path(tempfile.gettempdir()) / 'StellaSoraUpdater.log'
     return root / "updater.log"
 
 
 def log(message: str) -> None:
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    with _log_path().open("a", encoding="utf-8") as output:
-        output.write(f"[{timestamp}] {message}\n")
+    try:
+        with _log_path().open("a", encoding="utf-8") as output:
+            output.write(f"[{timestamp}] {message}\n")
+    except OSError:
+        pass  # A diagnostic failure must not stop update/rollback handling.
 
 
 def wait_for_process_exit(pid: int, timeout: float = WAIT_TIMEOUT_SECONDS) -> None:
@@ -175,6 +181,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--package", type=Path, required=True)
     parser.add_argument("--target-dir", type=Path, required=True)
     parser.add_argument("--parent-pid", type=int, required=True)
+    parser.add_argument('--wait-pid', type=int, action='append', default=[])
     parser.add_argument("--executable", default=APP_EXE_NAME)
     parser.add_argument("--cleanup-dir", type=Path)
     return parser
@@ -185,6 +192,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         log(f"更新程序启动，等待主程序 PID {args.parent_pid} 退出")
         wait_for_process_exit(args.parent_pid)
+        for pid in sorted(set(args.wait_pid) - {args.parent_pid}):
+            wait_for_process_exit(pid)
         work_dir = apply_update(args.package, args.target_dir)
         args.package.unlink(missing_ok=True)
         restart_application(args.target_dir.resolve(), args.executable)

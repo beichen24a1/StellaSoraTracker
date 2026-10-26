@@ -28,6 +28,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+from contextvars import ContextVar
+from functools import wraps
 from urllib.request import Request, urlopen
 
 from . import server_config
@@ -52,6 +54,26 @@ CATALOG_CACHE_HOURS = 12.0
 # 即便记录序号都认识, 也每隔这么久强制联网刷新一次名称/头像
 REFRESH_HOURS = 6.0
 CATALOG_CACHE_FILENAME = "stellasora_catalog_cache.json"
+_language = ContextVar('catalog_language', default=None)
+
+
+class CatalogLanguageChanged(LookupError):
+    pass
+
+
+def _catalog_language():
+    return _language.get() or server_config.api_lang()
+
+
+def _language_snapshot(function):
+    @wraps(function)
+    def run(*args, **kwargs):
+        token = _language.set(server_config.api_lang())
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _language.reset(token)
+    return run
 
 # 最近一次五星目录查询失败了几路(0/1/2); 供界面区分"没有缺失"与"根本没查到"。
 _fetch_failures = 0
@@ -80,7 +102,7 @@ def _read_url(url: str, progress: ProgressCallback | None = None,
 
 def _catalog_cache_path(state_path: Path | None) -> Path | None:
     """五星目录缓存与同步状态同目录(exports/)。"""
-    name = f'{Path(CATALOG_CACHE_FILENAME).stem}_{server_config.api_lang()}.json'
+    name = f'{Path(CATALOG_CACHE_FILENAME).stem}_{_catalog_language()}.json'
     return Path(state_path).with_name(name) if state_path else None
 
 
@@ -173,7 +195,7 @@ def _fetch_five_star_catalog(progress: ProgressCallback | None = None) -> list[d
     """
     global _fetch_failures
     _fetch_failures = 0
-    lang = server_config.api_lang()
+    lang = _catalog_language()
     jobs = (
         (f"characters?lang={lang}", "traveler", "grade"),
         (f"discs?lang={lang}", "disc", "star"),
@@ -376,7 +398,7 @@ def _augment_with_banner_names(fetched: list[dict],
         return fetched                                  # 角色接口正常, 不用兜底
     try:
         from . import official_banners
-        official_banners.fetch_banners(timeout=CATALOG_TIMEOUT)
+        official_banners.fetch_banners(timeout=CATALOG_TIMEOUT, lang=_catalog_language())
         entries = official_banners.rate_up_entries()
     except Exception:                                   # noqa: BLE001  兜底失败不影响主流程
         return fetched
@@ -420,6 +442,7 @@ def needs_online_lookup(record_ids) -> bool:
     return False
 
 
+@_language_snapshot
 def _sync_once(
     state_path: Path | None,
     progress: ProgressCallback | None,
@@ -489,6 +512,8 @@ def _sync_once(
     icon_failed: list[dict] = []
     appeared: list[dict] = []
     for item in fetched:
+        if _catalog_language() != server_config.api_lang():
+            raise CatalogLanguageChanged('服务器已切换，停止旧语言的名称注册')
         item_id, kind = item["id"], item["kind"]
         five_star = bool(item.get("five_star", True))
         is_new = item_id not in seen

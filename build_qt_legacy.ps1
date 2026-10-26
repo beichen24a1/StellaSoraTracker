@@ -1,0 +1,60 @@
+param()
+
+$ErrorActionPreference = "Stop"
+$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $root
+
+$python = if ($env:STELLASORA_BUILD_PYTHON) {
+    $env:STELLASORA_BUILD_PYTHON
+} else {
+    Join-Path $root ".venv\Scripts\python.exe"
+}
+
+if (-not (Test-Path -LiteralPath $python)) {
+    throw "Build Python not found: $python"
+}
+
+& $python -c "import PIL, PyInstaller" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    throw "Build Python must provide Pillow and PyInstaller."
+}
+
+# Keep unrelated applications' DLLs out of PyInstaller's dependency search.
+$originalPath = $env:PATH
+$env:PATH = @(
+    (Split-Path -Parent $python),
+    (Join-Path $env:SystemRoot "System32"),
+    $env:SystemRoot
+) -join [IO.Path]::PathSeparator
+try {
+& $python -m PyInstaller --noconfirm --clean StellaSoraUpdater.spec
+if ($LASTEXITCODE -ne 0) { throw "Updater build failed." }
+
+# 发行渠道只有 GitHub
+$target = "github"
+$launcher = "launcher_qt_legacy.py"
+$output = Join-Path $root "release\$target"
+$work = Join-Path $root "build\$target"
+$spec = Join-Path $root "build\StellaSoraGachaTool-$target.spec"
+$assets = Join-Path $root "assets"
+New-Item -ItemType Directory -Path $output -Force | Out-Null
+
+& $python -m PyInstaller `
+    --noconfirm `
+    --clean `
+    --windowed `
+    --onedir `
+    --name StellaSoraGachaTool `
+    --icon (Join-Path $assets "app_icon.ico") `
+    --add-data "$assets;assets" `
+    --distpath $output `
+    --workpath $work `
+    --specpath (Split-Path -Parent $spec) `
+    $launcher
+if ($LASTEXITCODE -ne 0) { throw "Application build failed for $target." }
+
+Copy-Item -LiteralPath "dist\StellaSoraUpdater.exe" -Destination "$output\StellaSoraGachaTool\StellaSoraUpdater.exe" -Force
+Copy-Item -LiteralPath (Join-Path $root 'LICENSE'), (Join-Path $root 'README.md') -Destination "$output\StellaSoraGachaTool" -Force
+} finally {
+    $env:PATH = $originalPath
+}

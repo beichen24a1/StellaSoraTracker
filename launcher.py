@@ -1,4 +1,4 @@
-from stellasora_toolkit.gui import main
+from stellasora_toolkit.desktop_launcher import main
 
 
 if __name__ == "__main__":

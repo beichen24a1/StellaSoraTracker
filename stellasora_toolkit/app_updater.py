@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -157,6 +158,7 @@ def download_update(
     installer: bool = False,
     retries: int = 3,
     cancelled: Callable[[], bool] | None = None,
+    metrics: Callable[[dict], None] | None = None,
 ) -> Path:
     if installer and not update.has_installer:
         raise ValueError("installer update is unavailable")
@@ -176,6 +178,9 @@ def download_update(
             with os.fdopen(fd, "wb") as output, urlopen(request, timeout=30) as response:
                 total = int(response.headers.get("Content-Length", 0))
                 received = 0
+                started = time.monotonic()
+                if metrics:
+                    metrics({'phase': 'downloading', 'received': 0, 'total': total, 'speed': 0, 'eta': None})
                 while True:
                     if cancelled and cancelled():
                         raise UpdateCancelled('软件自动更新已关闭')
@@ -185,8 +190,14 @@ def download_update(
                     output.write(chunk)
                     digest.update(chunk)
                     received += len(chunk)
+                    if metrics:
+                        speed = received / max(time.monotonic() - started, 0.001)
+                        metrics({'phase': 'downloading', 'received': received, 'total': total, 'speed': speed,
+                                 'eta': max(0, total-received)/speed if total else None})
                     if progress and total:
                         progress(f"正在下载软件更新 {received * 100 // total}%")
+            if metrics:
+                metrics({'phase': 'verifying', 'received': received, 'total': total, 'speed': 0, 'eta': None})
             if digest.hexdigest().lower() != expected_hash:
                 raise ValueError("software update checksum mismatch")
             if cancelled and cancelled():
@@ -205,7 +216,7 @@ def download_update(
     raise last_error if last_error is not None else RuntimeError("download failed")
 
 
-def launch_update_installer(package: Path, executable: Path) -> None:
+def launch_update_installer(package: Path, executable: Path, *, wait_pids=()) -> None:
     if os.name != "nt":
         raise OSError("automatic software updates are only supported on Windows")
     executable = executable.resolve(strict=True)
@@ -234,6 +245,8 @@ def launch_update_installer(package: Path, executable: Path) -> None:
         "--cleanup-dir",
         str(helper_dir),
     ]
+    for pid in sorted({pid for pid in wait_pids if type(pid) is int and pid > 0}):
+        args.extend(['--wait-pid', str(pid)])
 
     if _directory_is_writable(executable.parent):
         subprocess.Popen(args, cwd=str(executable.parent))

@@ -1,11 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
+# Legacy Qt comparison build. The default Electron build is build_electron.ps1.
 from pathlib import Path
 
 project_root = Path(SPECPATH)
 
 
 a = Analysis(
-    [str(project_root / 'launcher_github.py')],
+    [str(project_root / 'launcher_qt_legacy.py')],
     pathex=[str(project_root)],
     binaries=[],
     datas=[(str(project_root / 'assets'), 'assets')],
