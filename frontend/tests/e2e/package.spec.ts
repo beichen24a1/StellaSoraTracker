@@ -17,6 +17,9 @@ test('extracted package uses frozen Python core without Python or Node on PATH',
     await expect(page.locator('.metric-card').first()).toContainText('2')
     const state=await page.evaluate(()=>window.stella.request('app.state'))
     expect(state.packaged).toBe(true);expect(state.summary.pulls).toBe(2)
+    const displayVersion=/^APP_VERSION\s*=\s*["']([^"']+)["']/m.exec(fs.readFileSync(path.resolve(frontend,'../stellasora_toolkit/ui/constants.py'),'utf8'))![1]
+    expect(state.version).toBe(displayVersion)
+    expect(await desktop.evaluate(({app})=>app.getVersion())).toBe(JSON.parse(fs.readFileSync(path.join(frontend,'package.json'),'utf8')).version)
     expect(await desktop.evaluate(({app})=>app.isPackaged)).toBe(true)
     expect(await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences().contextIsolation)).toBe(true)
     for(const [name,heading] of [['招募记录','招募记录'],['数据与设置','数据与设置'],['上传与分享','上传与分享'],['使用说明','使用说明与风险提示']]){
