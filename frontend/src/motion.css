@@ -1,0 +1,91 @@
+:root {
+  --motion-fast: 140ms;
+  --motion-base: 240ms;
+  --motion-slow: 300ms;
+  --motion-ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* The archive moves as one page; data updates never animate every record. */
+.page-enter-active { transition: opacity var(--motion-base) ease, transform var(--motion-base) var(--motion-ease); }
+.page-leave-active { transition: opacity 110ms ease, transform 110ms ease; pointer-events: none; }
+.page-enter-from { opacity: 0; transform: translateY(10px); }
+.page-leave-to { opacity: 0; transform: translateY(-5px); }
+
+.page-heading,
+.metric-card,
+.category-card,
+.settings-section,
+.pool-card,
+.record-table,
+.upload-summary,
+.binding-panel,
+.help-content {
+  animation: archive-reveal var(--motion-slow) var(--motion-ease) backwards;
+}
+.metrics-grid > :nth-child(2), .category-grid > :nth-child(2), .pool-grid > :nth-child(2), .settings-section:nth-of-type(2) { animation-delay: 30ms; }
+.metrics-grid > :nth-child(3), .category-grid > :nth-child(3), .pool-grid > :nth-child(3), .settings-section:nth-of-type(3) { animation-delay: 60ms; }
+.metrics-grid > :nth-child(4), .category-grid > :nth-child(4), .pool-grid > :nth-child(4), .settings-section:nth-of-type(n+4) { animation-delay: 90ms; }
+@keyframes archive-reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Keep the selected navigation background continuous between pages. */
+.sidebar nav { position: relative; }
+.sidebar nav::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 44px;
+  border-radius: 9px;
+  background: var(--primary-soft);
+  transform: translateY(calc(var(--nav-index, 0) * 52px));
+  transition: transform var(--motion-base) var(--motion-ease), background-color var(--motion-base) ease;
+  pointer-events: none;
+}
+.sidebar nav a { position: relative; z-index: 1; height: 44px; }
+.sidebar nav a.selected { background: transparent; }
+.sidebar nav a .anticon { transition: transform var(--motion-base) var(--motion-ease); }
+.sidebar nav a.selected .anticon { transform: scale(1.08); }
+
+.desktop, .sidebar, .topbar, .statusbar, .panel, .metric-card, .category-card,
+.theme-options > button, .bind-command, .task-log {
+  transition: background-color 200ms ease, border-color 200ms ease, color 160ms ease;
+}
+.category-card { transition: background-color 200ms ease, border-color 160ms ease, color 160ms ease, transform var(--motion-fast) ease; }
+.filter-pills button { transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease, transform var(--motion-fast) ease; }
+.filter-pills button:active, .theme-options > button:active { transform: scale(.98); }
+.theme-preview { transition: border-color 200ms ease, box-shadow 200ms ease; }
+.theme-options > button.active .theme-preview { box-shadow: 0 0 0 1px var(--primary); }
+
+/* Ant Design's dialogs share a calm, centered entry instead of click-origin zoom. */
+.stella-dialog-enter, .stella-dialog-appear { animation: dialog-in 260ms var(--motion-ease) both paused; transform-origin: center !important; }
+.stella-dialog-enter-active, .stella-dialog-appear-active { animation-play-state: running; }
+.stella-dialog-leave { animation: dialog-out 160ms ease both; pointer-events: none; transform-origin: center !important; }
+.stella-mask-enter, .stella-mask-appear { animation: mask-in 220ms ease both paused; }
+.stella-mask-enter-active, .stella-mask-appear-active { animation-play-state: running; }
+.stella-mask-leave { animation: mask-out 180ms ease both; }
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(14px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes dialog-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(6px) scale(.99); }
+}
+@keyframes mask-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mask-out { from { opacity: 1; } to { opacity: 0; } }
+
+.update-stage-enter-active { transition: opacity 200ms ease, transform 200ms var(--motion-ease); }
+.update-stage-leave-active { transition: opacity 100ms ease; pointer-events: none; }
+.update-stage-enter-from { opacity: 0; transform: translateY(8px); }
+.update-stage-leave-to { opacity: 0; }
+.task-list-enter-active, .task-list-leave-active, .task-list-move { transition: opacity 200ms ease, transform var(--motion-base) var(--motion-ease); }
+.task-list-enter-from { opacity: 0; transform: translateY(-8px); }
+.task-list-leave-to { opacity: 0; transform: translateX(12px); }
+.task-list-leave-active { position: absolute; }
+.task-list { position: relative; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
