@@ -5,12 +5,14 @@ import { useAppStore } from '../store'
 import { bytes, duration } from '../format'
 const store = useAppStore()
 const downloading = computed(() => ['downloading', 'verifying'].includes(store.update.status))
+const stage = computed(() => downloading.value ? 'download' : store.update.status)
 const percent = computed(() => store.update.total ? Math.min(100, (store.update.received || 0) / store.update.total * 100) : 0)
 function later() { store.updateOpen = false }
 </script>
 <template>
-  <a-modal v-model:open="store.updateOpen" :width="680" :footer="null" :mask-closable="false" title="软件更新" class="update-modal">
+  <a-modal v-model:open="store.updateOpen" transition-name="stella-dialog" mask-transition-name="stella-mask" :width="680" :footer="null" :mask-closable="false" title="软件更新" class="update-modal">
     <div class="update-heading"><div class="update-symbol"><CloudDownloadOutlined aria-hidden="true"/></div><div><h2>{{ store.update.status === 'ready' ? '更新已就绪' : store.update.update ? '发现新版本' : '检查更新' }}</h2><p class="muted">{{ store.state?.version }} <span v-if="store.update.update"> → {{ store.update.update.version }}</span></p></div><a-tag>{{ (store.update.channel || store.state?.preferences.update_channel) === 'beta' ? '测试渠道' : '稳定渠道' }}</a-tag></div>
+    <Transition name="update-stage" mode="out-in"><div :key="stage" class="update-stage">
     <template v-if="store.update.status === 'available'">
       <div class="release-notes"><h3>本次更新</h3><pre>{{ store.update.update?.notes || '本次暂无详细更新说明。' }}</pre></div>
       <p class="muted">下载后校验 SHA-256，安装前仍需你确认。</p>
@@ -27,5 +29,6 @@ function later() { store.updateOpen = false }
       <div class="update-result"><CloseCircleFilled class="error-icon"/><h3>{{ store.update.status === 'cancelled' ? '下载已取消' : '更新未完成' }}</h3><p>{{ store.update.error || '你可以稍后重新下载。' }}</p></div><div class="dialog-actions"><a-button @click="later">关闭</a-button><a-button type="primary" @click="store.invoke(store.update.update ? 'updates.download' : 'updates.check')">重试</a-button></div>
     </template>
     <template v-else><a-spin v-if="store.update.status === 'checking'" tip="正在检查…"/><a-result v-else-if="store.update.status === 'upToDate'" status="success" title="当前已是最新版本"/><p v-else class="muted">等待更新检查结果。</p><div class="dialog-actions"><a-button @click="later">关闭</a-button></div></template>
+    </div></Transition>
   </a-modal>
 </template>
