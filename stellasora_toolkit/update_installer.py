@@ -1,7 +1,6 @@
 """Apply a downloaded update: replace the program files, then restart the app.
 
-The updater normally runs with an administrator token, because the client
-manifest asks for one. Anything it *moves* keeps the security descriptor it had
+The updater may run with an administrator token. Anything it *moves* keeps the security descriptor it had
 inside the updater's temporary work directory, so a program file could end up
 readable only by Administrators. A later double-click then fails with access
 denied before UAC can even prompt, which looks exactly like a dead launcher.
@@ -13,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import json
 import os
 import shutil
 import subprocess
@@ -34,15 +34,19 @@ STALE_WORK_SECONDS = 7 * 24 * 60 * 60
 # Access bits used by the post-install check: the parts of FILE_GENERIC_READ /
 # FILE_GENERIC_EXECUTE that any normal program folder grants.
 _FILE_READ_DATA = 0x0001
+_FILE_READ_EA = 0x0008
 _FILE_EXECUTE = 0x0020
 _FILE_READ_ATTRIBUTES = 0x0080
+_READ_CONTROL = 0x00020000
 _SYNCHRONIZE = 0x00100000
-_READ_RIGHTS = _FILE_READ_DATA | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE
+_READ_RIGHTS = _FILE_READ_DATA | _FILE_READ_EA | _FILE_READ_ATTRIBUTES | _READ_CONTROL | _SYNCHRONIZE
 _EXECUTE_RIGHTS = _READ_RIGHTS | _FILE_EXECUTE
 _ACCESS_ALLOWED_ACE_TYPE = 0
 _ACCESS_DENIED_ACE_TYPE = 1
 _SE_FILE_OBJECT = 1
 _DACL_SECURITY_INFORMATION = 0x00000004
+_OWNER_SECURITY_INFORMATION = 0x00000001
+_INHERIT_ONLY_ACE = 0x08
 _TOKEN_QUERY = 0x0008
 _TOKEN_USER = 1
 _OWNER_RIGHTS_SID = "S-1-3-4"
@@ -294,7 +298,7 @@ def _file_security(path: Path) -> tuple[str | None, list[tuple[int, str, int]]] 
     sacl = ctypes.c_void_p()
     descriptor = ctypes.c_void_p()
     code = advapi32.GetNamedSecurityInfoW(
-        str(path), _SE_FILE_OBJECT, _DACL_SECURITY_INFORMATION,
+        str(path), _SE_FILE_OBJECT, _DACL_SECURITY_INFORMATION | _OWNER_SECURITY_INFORMATION,
         ctypes.byref(owner), ctypes.byref(group), ctypes.byref(dacl), ctypes.byref(sacl), ctypes.byref(descriptor),
     )
     if code:
@@ -311,6 +315,8 @@ def _file_security(path: Path) -> tuple[str | None, list[tuple[int, str, int]]] 
                 break
             index += 1
             header = ctypes.cast(pointer, ctypes.POINTER(_AceHeader)).contents
+            if header.AceFlags & _INHERIT_ONLY_ACE:
+                continue
             if header.AceType not in (_ACCESS_ALLOWED_ACE_TYPE, _ACCESS_DENIED_ACE_TYPE):
                 continue
             if header.AceSize < ctypes.sizeof(_MaskedAce):
@@ -326,7 +332,7 @@ def _file_security(path: Path) -> tuple[str | None, list[tuple[int, str, int]]] 
 
 def acl_grants(candidates: set[str], needed: int, aces, *, owner: str | None = None) -> bool:
     """Whether the ACE list grants every bit of ``needed`` to one candidate SID."""
-    allowed = False
+    granted = 0
     for ace_type, sid, mask in aces:
         if sid == _OWNER_RIGHTS_SID:
             sid = owner
@@ -334,9 +340,9 @@ def acl_grants(candidates: set[str], needed: int, aces, *, owner: str | None = N
             continue
         if ace_type == _ACCESS_DENIED_ACE_TYPE and mask & needed:
             return False
-        if ace_type == _ACCESS_ALLOWED_ACE_TYPE and (mask & needed) == needed:
-            allowed = True
-    return allowed
+        if ace_type == _ACCESS_ALLOWED_ACE_TYPE:
+            granted |= mask
+    return (granted & needed) == needed
 
 
 def plain_user_can_use(path: Path, *, execute: bool = False) -> bool | None:
@@ -358,7 +364,7 @@ def plain_user_can_use(path: Path, *, execute: bool = False) -> bool | None:
         return None
     owner, aces = security
     if not aces:
-        return None
+        return False  # An empty DACL denies access; it differs from a NULL DACL.
     needed = _EXECUTE_RIGHTS if execute else _READ_RIGHTS
     return acl_grants({user, *_LAUNCH_GROUP_SIDS}, needed, aces, owner=owner)
 
@@ -368,7 +374,21 @@ def verify_installation(target_dir: Path, installed: list[Path]) -> None:
     executable = target_dir / APP_EXE_NAME
     if not executable.is_file():
         raise RuntimeError("更新后主程序不存在")
+    def check_permission(path: Path, *, execute=False):
+        permission = plain_user_can_use(path, execute=execute)
+        if permission is False:
+            raise RuntimeError(
+                f"更新后的 {path.name} 对普通用户不可访问；已回滚。"
+                "请将完整 ZIP 解压到有读写权限的新文件夹，再复制旧 exports 后重试"
+            )
+        if permission is None and path == executable:
+            log("无法校验主程序对普通用户的权限，已跳过该检查")
+    check_permission(target_dir, execute=True)
+    check_permission(executable, execute=True)
     for entry in installed:
+        if entry.is_dir():
+            for directory in [entry, *(path for path in entry.rglob('*') if path.is_dir())]:
+                check_permission(directory, execute=True)
         files = [entry] if entry.is_file() else [path for path in entry.rglob("*") if path.is_file()]
         for path in files:
             try:
@@ -376,17 +396,7 @@ def verify_installation(target_dir: Path, installed: list[Path]) -> None:
                     handle.read(1)
             except OSError as error:
                 raise RuntimeError(f"更新后的文件无法读取：{path}（{error}）") from error
-    shipped = [executable, *(entry for entry in installed if entry.is_file() and entry != executable
-                             and entry.suffix.casefold() == ".exe")]
-    for path in shipped:
-        launchable = plain_user_can_use(path, execute=True)
-        if launchable is False:
-            raise RuntimeError(
-                f"{path.name} 的权限只授予了管理员，普通双击会在提权前被拒绝；"
-                "已回滚，请把程序放在自己能读写的目录后重试"
-            )
-        if launchable is None and path == executable:
-            log("无法校验主程序对普通用户的权限，已跳过该检查")
+            check_permission(path, execute=path.suffix.casefold() in ('.exe', '.dll', '.pyd', '.node'))
 
 
 def replace_program_files(payload_root: Path, target_dir: Path, backup_dir: Path) -> None:
@@ -438,12 +448,44 @@ def apply_update(package: Path, target_dir: Path) -> Path:
     backup_dir.mkdir()
     log(f"开始解压更新包：{package}")
     payload_root = extract_update_package(package, extract_dir)
+    entries = [path.name for path in payload_root.iterdir()]
+    (work_dir/'installed.json').write_text(json.dumps({
+        'target': str(target_dir), 'entries': entries,
+        'replaced': [name for name in entries if (target_dir/name).exists()],
+    }), encoding='utf-8')
     log(f"开始替换程序文件：{target_dir}")
     replace_program_files(payload_root, target_dir, backup_dir)
     if not (target_dir / APP_EXE_NAME).is_file():
         raise RuntimeError("更新后主程序不存在")
     log("程序文件替换完成并通过权限校验")
     return work_dir
+
+
+def rollback_completed_update(work_dir: Path, target_dir: Path) -> None:
+    """Restore the old program when Windows refuses to start the new executable."""
+    target_dir = target_dir.resolve(strict=True)
+    record = json.loads((work_dir/'installed.json').read_text('utf-8'))
+    names = record['entries']
+    if record['target'] != str(target_dir) or not isinstance(names, list) or any(
+        not isinstance(name, str) or not name or Path(name).name != name
+        or name in ('.', '..') or name.casefold() in PRESERVED_TOP_LEVELS for name in names
+    ):
+        raise ValueError('更新回滚清单无效，旧程序备份已保留')
+    previous = record.get('replaced')
+    backup = work_dir/'backup'
+    if not isinstance(previous, list) or any(name not in names for name in previous):
+        raise ValueError('更新回滚清单无效，旧程序备份已保留')
+    if not backup.is_dir() or any(not (backup/name).exists() for name in previous):
+        raise RuntimeError('旧程序备份不完整，保留现有程序及备份供人工恢复')
+    for name in names:
+        target = target_dir/name
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink(missing_ok=True)
+    for name in previous:
+        shutil.move(str(backup/name), str(target_dir/name))
+    log('新程序启动失败，已恢复更新前的程序文件')
 
 
 def restart_application(target_dir: Path, executable_name: str) -> None:
@@ -489,6 +531,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    work_dir = None
+    restarted = False
     try:
         for stale in prune_stale_directories(keep=args.cleanup_dir):
             log(f"清理上次更新残留的临时目录：{stale}")
@@ -497,14 +541,23 @@ def main(argv: list[str] | None = None) -> int:
         for pid in sorted(set(args.wait_pid) - {args.parent_pid}):
             wait_for_process_exit(pid)
         work_dir = apply_update(args.package, args.target_dir)
-        args.package.unlink(missing_ok=True)
         restart_application(args.target_dir.resolve(), args.executable)
+        restarted = True
+        try:
+            args.package.unlink(missing_ok=True)
+        except OSError:
+            log('程序已启动；无法删除下载包，保留供后续清理')
         log("更新成功，已重新启动主程序")
         # 重启成功后再删除备份目录(失败时保留以便回滚)
         shutil.rmtree(work_dir, ignore_errors=True)
         schedule_self_cleanup(args.cleanup_dir)
         return 0
     except Exception as error:
+        if work_dir is not None and not restarted:
+            try:
+                rollback_completed_update(work_dir, args.target_dir)
+            except Exception as rollback_error:
+                log(f'回滚未完成，旧程序备份位于 {work_dir}: {rollback_error}')
         log(f"更新失败：{type(error).__name__}: {error}")
         show_error(f"自动更新未完成，原程序文件已尽量恢复。\n\n{error}\n\n日志：{_log_path()}")
         return 1

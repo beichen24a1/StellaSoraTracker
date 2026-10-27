@@ -221,14 +221,13 @@ def launch_update_installer(package: Path, executable: Path, *, wait_pids=()) ->
         raise OSError("automatic software updates are only supported on Windows")
     executable = executable.resolve(strict=True)
     package = package.resolve(strict=True)
-    bundled_updater = executable.parent / UPDATER_EXE_NAME
     helper_dir = Path(tempfile.mkdtemp(prefix="stellasora-updater-"))
     helper = helper_dir / UPDATER_EXE_NAME
     try:
-        if bundled_updater.is_file():
-            shutil.copy2(bundled_updater, helper)
-        else:
-            _extract_update_installer(package, helper)
+        # The caller has verified the downloaded package. Run its updater so
+        # fixes to installation/permissions take effect during this update,
+        # rather than running an older helper from the existing installation.
+        _extract_update_installer(package, helper)
     except Exception:
         shutil.rmtree(helper_dir, ignore_errors=True)
         raise
@@ -248,21 +247,15 @@ def launch_update_installer(package: Path, executable: Path, *, wait_pids=()) ->
     for pid in sorted({pid for pid in wait_pids if type(pid) is int and pid > 0}):
         args.extend(['--wait-pid', str(pid)])
 
-    if _directory_is_writable(executable.parent):
-        subprocess.Popen(args, cwd=str(executable.parent))
-        return
-
-    parameters = subprocess.list2cmdline(args[1:])
-    result = __import__("ctypes").windll.shell32.ShellExecuteW(
-        None,
-        "runas",
-        str(helper),
-        parameters,
-        str(executable.parent),
-        1,
-    )
-    if result <= 32:
-        raise OSError(f"failed to start elevated updater: {result}")
+    try:
+        if _directory_is_writable(executable.parent):
+            subprocess.Popen(args, cwd=str(executable.parent))
+        else:
+            from .admin import request_elevation
+            request_elevation(helper, args[1:], working_directory=executable.parent)
+    except Exception:
+        shutil.rmtree(helper_dir, ignore_errors=True)
+        raise
 
 
 def update_installer_available(executable: Path) -> bool:

@@ -2,6 +2,7 @@ import hashlib
 import os
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -85,26 +86,61 @@ class AppUpdaterTests(unittest.TestCase):
             executable = Path(directory) / APP_INSTALL_FOLDER / APP_EXE_NAME
             self.assertTrue(is_installed_application(executable))
 
-    def test_launches_a_temporary_updater_copy(self):
+    def test_uses_downloaded_updater_instead_of_older_bundled_helper(self):
         from stellasora_toolkit.app_updater import UPDATER_EXE_NAME, launch_update_installer
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             executable = root / APP_EXE_NAME
             executable.write_bytes(b"app")
-            (root / UPDATER_EXE_NAME).write_bytes(b"updater")
+            (root / UPDATER_EXE_NAME).write_bytes(b"old updater")
             package = root / "update.zip"
-            package.write_bytes(b"package")
+            with zipfile.ZipFile(package, 'w') as archive:
+                archive.writestr('StellaSoraGachaTool/'+UPDATER_EXE_NAME, b'new updater')
             with patch("stellasora_toolkit.app_updater._directory_is_writable", return_value=True), patch(
                 "stellasora_toolkit.app_updater.subprocess.Popen"
             ) as popen:
                 launch_update_installer(package, executable)
 
             args = popen.call_args.args[0]
+            self.assertEqual(Path(args[0]).read_bytes(), b'new updater')
             self.assertNotEqual(Path(args[0]).parent, root)
             self.assertEqual(args[args.index("--target-dir") + 1], str(root))
             self.assertEqual(args[args.index("--parent-pid") + 1], str(os.getpid()))
             self.assertEqual(args[args.index("--cleanup-dir") + 1], str(Path(args[0]).parent))
+
+    def test_invalid_or_missing_package_helper_never_falls_back_to_old_helper(self):
+        from stellasora_toolkit import app_updater
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root/APP_EXE_NAME; executable.write_bytes(b'app')
+            (root/app_updater.UPDATER_EXE_NAME).write_bytes(b'old updater')
+            for entries in (None, {}, {'a/StellaSoraUpdater.exe': b'one', 'b/StellaSoraUpdater.exe': b'two'}):
+                package = root/'update.zip'
+                if entries is None:
+                    package.write_bytes(b'broken download')
+                else:
+                    with zipfile.ZipFile(package, 'w') as archive:
+                        for name, content in entries.items(): archive.writestr(name, content)
+                with self.subTest(entries=entries), patch.object(app_updater.subprocess, 'Popen') as start:
+                    with self.assertRaises((zipfile.BadZipFile, FileNotFoundError)):
+                        app_updater.launch_update_installer(package, executable)
+                    start.assert_not_called()
+                self.assertEqual(executable.read_bytes(), b'app')
+
+    def test_refused_elevation_cleans_helper_and_leaves_program_unchanged(self):
+        from stellasora_toolkit import app_updater
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root/APP_EXE_NAME; executable.write_bytes(b'old app')
+            package = root/'update.zip'
+            with zipfile.ZipFile(package, 'w') as archive:
+                archive.writestr('StellaSoraUpdater.exe', b'new updater')
+            with patch.object(app_updater, '_directory_is_writable', return_value=False), \
+                 patch('stellasora_toolkit.admin.request_elevation', side_effect=OSError('cancelled')) as elevate:
+                with self.assertRaises(OSError): app_updater.launch_update_installer(package, executable)
+            self.assertFalse(elevate.call_args.args[0].parent.exists())
+            self.assertEqual(executable.read_bytes(), b'old app')
 
     def test_detects_bundled_update_installer(self):
         from stellasora_toolkit.app_updater import UPDATER_EXE_NAME, update_installer_available

@@ -71,7 +71,9 @@ class ElectronDistributionTests(unittest.TestCase):
             root=Path(directory)
             executable=root/app_updater.APP_EXE_NAME;executable.write_bytes(b'fixture')
             (root/app_updater.UPDATER_EXE_NAME).write_bytes(b'updater')
-            package=root/'update.zip';package.write_bytes(b'archive')
+            package=root/'update.zip'
+            with zipfile.ZipFile(package,'w') as archive:
+                archive.writestr('StellaSoraUpdater.exe',b'new updater')
             with patch.object(app_updater,'_directory_is_writable',return_value=True),patch.object(app_updater.subprocess,'Popen') as start:
                 app_updater.launch_update_installer(package,executable,wait_pids=[11,12,11])
             command=start.call_args.args[0]
