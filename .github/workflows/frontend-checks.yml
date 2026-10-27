@@ -1,0 +1,44 @@
+name: 前端检查
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: 类型检查、构建与单元测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      # build 里含 vue-tsc --noEmit 与 electron 的 tsc 编译，类型错误会在这里挡下
+      - name: 类型检查与构建
+        run: npm run build
+
+      - name: 单元测试
+        run: npm run test
