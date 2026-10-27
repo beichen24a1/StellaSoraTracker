@@ -9,20 +9,6 @@ from pathlib import Path
 from collections.abc import Sequence
 
 
-class AdminRequired(PermissionError):
-    """An action needs an elevated process, but this one runs as a normal user."""
-
-
-def is_administrator() -> bool:
-    """Whether the current process already holds an administrator token."""
-    if os.name != "nt":
-        return True
-    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
-    shell32.IsUserAnAdmin.argtypes = []
-    shell32.IsUserAnAdmin.restype = wintypes.BOOL
-    return bool(shell32.IsUserAnAdmin())
-
-
 def request_elevation(
     executable: Path,
     arguments: Sequence[str] = (),

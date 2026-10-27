@@ -26,25 +26,21 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 开发环境需要 Node.js 22.12+、Python 3.10+；运行 `python -m pip install -e ".[dev]"` 后，用 `./run.ps1` 构建并打开新客户端。首次会通过 `npm ci` 安装前端依赖。渲染器热更新可另起 `frontend` 中的 `npm run dev`，通过 `VITE_DEV_SERVER_URL` 连接；正式程序只加载本地打包页面。
 
-本地验收构建：`./build_electron.ps1`（或 `./build_release.ps1`），输出 `release/StellaSoraGachaTool-Electron-local-win64.zip`，不会更新正式版本号、发布清单或 tag。包内自带 Python 核心和 Electron 运行时，**不需要用户安装 Python，也不携带 PySide6 界面运行库**。主程序清单为 `asInvoker`：双击 `启动器.exe` 以普通模式启动，读取游戏时再按提示授权一次；数据仍在程序旁的 `exports`。
+本地验收构建：`./build_electron.ps1`（或 `./build_release.ps1`），输出 `release/StellaSoraGachaTool-Electron-local-win64.zip`，不会更新正式版本号、发布清单或 tag。包内自带 Python 核心和 Electron 运行时，**不需要用户安装 Python，也不携带 PySide6 界面运行库**。主程序清单要求管理员权限：双击 `StellaSoraGachaTool.exe` 会弹出一次 UAC，确认后直接可用；数据仍在程序旁的 `exports`。
 
-验证命令：`./.venv/Scripts/python.exe tools/run_tests.py`；前端目录执行 `npm test`、`npm run test:e2e`。冻结包与中文路径验收工具为 `tools/verify_electron_package.py`，会复制包到独立目录，并校验客户端清单不强制提权、`启动器.exe` 随包提供。
+验证命令：`./.venv/Scripts/python.exe tools/run_tests.py`；前端目录执行 `npm test`、`npm run test:e2e`。冻结包与中文路径验收工具为 `tools/verify_electron_package.py`，会复制包到独立目录，并校验客户端清单要求管理员权限、引擎与署名文件随包提供。
 
 ## 启动方式
 
-解压后双击 `启动器.exe`：
+解压后双击 `StellaSoraGachaTool.exe`，Windows 会弹出一次 UAC，确认后以管理员身份启动。读取游戏内存需要管理员权限，所以启动即授权，没有单独的启动器。
 
-- **普通模式（默认）**：不弹 UAC，浏览记录、导入/导出、备份、设置和同步资源直接可用。
-- **需要读游戏时**：点「抓取抽卡记录」「读取游戏 UID」或「读取好感度」会提示一次，确认后工具以管理员身份重新启动，重启后再点一次刚才的操作即可继续。
-- **直接管理员启动**：`启动器.exe --admin`，或右键「以管理员身份运行」。`StellaSoraGachaTool.exe` 也可以直接双击，等同普通模式。
-
-普通模式需要在程序目录写入 `exports` 和 `.desktop`，请把程序放在自己有写权限的目录（例如桌面或 `%LOCALAPPDATA%`），不要放在 `Program Files` 下。
+程序会在自己的目录写入 `exports` 和 `.desktop`，请放在有写权限的位置（例如桌面或 `%LOCALAPPDATA%`），不要放在 `Program Files` 下。
 
 ### 旧版更新后无法启动
 
-如果出现“Windows 无法访问指定设备、路径或文件”，先保留旧程序目录和整个 `exports`，将完整 ZIP 解压到一个有读写权限的**全新目录**，再复制旧 `exports`。b2 运行 `StellaSoraGachaTool.exe`；随包提供 `启动器.exe` 的版本也可运行启动器。旧更新器留下的权限问题可能随原目录保留，完整的新目录可避免继续继承这些权限。
+如果出现“Windows 无法访问指定设备、路径或文件”，先保留旧程序目录和整个 `exports`，将完整 ZIP 解压到一个有读写权限的**全新目录**，再复制旧 `exports`。旧更新器留下的权限问题可能随原目录保留，完整的新目录可避免继续继承这些权限。
 
-当前源码会使用校验后的下载包内更新器，检查启动器、程序目录和运行库对普通用户的访问权限；Windows 拒绝启动新程序时恢复旧文件并保留下载包。此修复随下一次明确发布的版本提供；已安装旧客户端首次迁移时建议完整解压到新目录。若仍被拒绝访问，请记录原版本、目标版本和更新方式，并保留 `%LOCALAPPDATA%/StellaSoraGachaTool/logs/updater.log` 供排查。
+当前源码会使用校验后的下载包内更新器，检查程序目录和运行库对普通用户的访问权限；Windows 拒绝启动新程序时恢复旧文件并保留下载包。此修复随下一次明确发布的版本提供；已安装旧客户端首次迁移时建议完整解压到新目录。若仍被拒绝访问，请记录原版本、目标版本和更新方式，并保留 `%LOCALAPPDATA%/StellaSoraGachaTool/logs/updater.log` 供排查。
 
 
 `1.3.0.bata2` 是首个 Electron 测试版；历史 `1.3.0.bata1` 保留为 Qt 客户端，原有发行资产不变。
@@ -53,7 +49,7 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 当前公开测试版为 [1.3.0.bata2](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata2)，下载 `StellaSoraGachaTool-1.3.0.bata2-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 EXE。[b2 更新说明](docs/releases/v1.3.0.bata2.md)、[b1 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata1) 和原有[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 分别保留。
 
-已撤下 `1.3.2`、`1.3.3.bata1` 的公开发行入口；测试更新清单恢复到 b2，稳定更新清单恢复到原有稳定资产。当前源码仍保留后续加入的好感度、普通模式启动及按需提权修复，本次清理没有重新发版；源码功能范围与历史下载包请分别查看。
+已撤下 `1.3.2`、`1.3.3.bata1` 的公开发行入口；测试更新清单恢复到 b2，稳定更新清单恢复到原有稳定资产。当前源码仍保留后续加入的好感度与更新可靠性修复，本次清理没有重新发版；源码功能范围与历史下载包请分别查看。
 
 发行形式继续只提供 Windows 免安装 ZIP，不另外提供安装向导版。
 

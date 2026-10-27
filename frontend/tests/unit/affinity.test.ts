@@ -22,7 +22,7 @@ function installStella(routes: Record<string, (params: any) => unknown>) {
     if (method in routes) return routes[method](params)
     return { ok: true }
   })
-  window.stella = { request, onEvent: () => () => {}, importFiles: vi.fn() }
+  window.stella = { request, onEvent: () => () => {} }
 }
 
 beforeEach(() => {

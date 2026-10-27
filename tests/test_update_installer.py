@@ -264,13 +264,6 @@ class VerificationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "无法读取"):
                 verify_installation(self.target, [payload])
 
-    def test_checks_launcher_as_well_as_main_executable(self):
-        launcher = self.target/'启动器.exe'; launcher.write_bytes(b'launcher')
-        with patch('stellasora_toolkit.update_installer.plain_user_can_use',
-                   side_effect=lambda path, **_kwargs: path != launcher):
-            with self.assertRaisesRegex(RuntimeError, '启动器.exe'):
-                verify_installation(self.target, [self.executable, launcher])
-
     def test_checks_runtime_dependencies_as_an_ordinary_user(self):
         directory = self.target/'resources'; directory.mkdir()
         dependency = directory/'engine.dll'; dependency.write_bytes(b'dependency')
@@ -321,12 +314,12 @@ class RestartRollbackTests(unittest.TestCase):
             root = Path(directory)
             target = root/'app'; target.mkdir()
             (target/APP_EXE_NAME).write_bytes(b'old program')
-            (target/'启动器.exe').write_bytes(b'old launcher')
+            (target/'StellaSoraUpdater.exe').write_bytes(b'old updater')
             (target/'exports').mkdir()
             (target/'exports/history.json').write_bytes(b'private records')
             package = root/'update.zip'
             with zipfile.ZipFile(package, 'w') as archive:
-                for name, content in {APP_EXE_NAME:b'new program', '启动器.exe':b'new launcher', 'extra.dll':b'new'}.items():
+                for name, content in {APP_EXE_NAME:b'new program', 'StellaSoraUpdater.exe':b'new updater', 'extra.dll':b'new'}.items():
                     archive.writestr('StellaSoraGachaTool/'+name, content)
             with patch.object(update_installer, 'plain_user_can_use', return_value=True), \
                  patch.object(update_installer, 'prune_stale_directories', return_value=[]), \
@@ -337,7 +330,7 @@ class RestartRollbackTests(unittest.TestCase):
             self.assertEqual(code, 1)
             error.assert_called_once()
             self.assertEqual((target/APP_EXE_NAME).read_bytes(), b'old program')
-            self.assertEqual((target/'启动器.exe').read_bytes(), b'old launcher')
+            self.assertEqual((target/'StellaSoraUpdater.exe').read_bytes(), b'old updater')
             self.assertFalse((target/'extra.dll').exists())
             self.assertEqual((target/'exports/history.json').read_bytes(), b'private records')
             self.assertTrue(package.exists())
@@ -372,11 +365,11 @@ Set-Acl -LiteralPath '{quote(target)}' -AclObject $folder
                 subprocess.run([str(legacy), '/d', '/c', 'exit', '0'], check=True,
                                capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
             executable = target/APP_EXE_NAME
-            launcher = target/'启动器.exe'
+            second = target/'StellaSoraUpdater.exe'
             update_installer._install_entry(legacy, executable)
-            update_installer._install_entry(legacy, launcher)
-            verify_installation(target, [executable, launcher])
-            result = subprocess.run([str(launcher), '/d', '/c', 'exit', '0'], capture_output=True,
+            update_installer._install_entry(legacy, second)
+            verify_installation(target, [executable, second])
+            result = subprocess.run([str(second), '/d', '/c', 'exit', '0'], capture_output=True,
                                     timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
             self.assertEqual(result.returncode, 0)
 
