@@ -376,6 +376,39 @@ Set-Acl -LiteralPath '{quote(target)}' -AclObject $folder
 
 @unittest.skipUnless(os.name == 'nt', 'temp cleanup only runs on Windows')
 class TempCleanupTests(unittest.TestCase):
+    def test_self_cleanup_uses_windows_powershell_without_path_lookup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            helper = Path(directory)/'stellasora-updater-qa'; helper.mkdir()
+            with patch.object(update_installer.sys, 'frozen', True, create=True), \
+                    patch.object(update_installer.subprocess, 'Popen') as launch, \
+                    patch.dict(os.environ, {'PATH':'', 'SystemRoot':r'C:\Windows'}):
+                update_installer.schedule_self_cleanup(helper)
+            self.assertEqual(launch.call_args.args[0][0],
+                             str(Path(r'C:\Windows')/'System32/WindowsPowerShell/v1.0/powershell.exe'))
+
+    def test_self_cleanup_launch_failure_does_not_fail_a_completed_update(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root/'app'; target.mkdir()
+            package = root/'update.zip'; package.write_bytes(b'consumed package')
+            work = root/'work'; work.mkdir()
+            helper = root/'stellasora-updater-qa'; helper.mkdir()
+            with patch.object(update_installer.sys, 'frozen', True, create=True), \
+                    patch.object(update_installer, 'prune_stale_directories', return_value=[]), \
+                    patch.object(update_installer, 'wait_for_process_exit'), \
+                    patch.object(update_installer, 'apply_update', return_value=work), \
+                    patch.object(update_installer, 'restart_application') as restart, \
+                    patch.object(update_installer.subprocess, 'Popen', side_effect=FileNotFoundError('PowerShell unavailable')), \
+                    patch.object(update_installer, 'show_error') as show_error:
+                code = update_installer.main(['--package',str(package),'--target-dir',str(target),
+                                               '--parent-pid','10','--cleanup-dir',str(helper)])
+            self.assertEqual(code, 0)
+            restart.assert_called_once()
+            show_error.assert_not_called()
+            self.assertFalse(package.exists())
+            self.assertFalse(work.exists())
+            self.assertTrue(helper.exists(), 'failed cleanup is left for a later run')
+
     def test_removes_only_stale_directories_and_keeps_the_active_one(self):
         import time
 

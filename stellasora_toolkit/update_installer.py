@@ -507,10 +507,17 @@ def schedule_self_cleanup(helper_dir: Path | None) -> None:
         f"Wait-Process -Id {os.getpid()} -ErrorAction SilentlyContinue; "
         f"Remove-Item -LiteralPath '{quoted_helper_dir}' -Recurse -Force -ErrorAction SilentlyContinue"
     )
-    subprocess.Popen(
-        ["powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", command],
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
+    # PATH can omit PowerShell (for example in a portable launcher). Cleanup is
+    # best effort: failure here must not turn an installed, restarted update
+    # into a misleading "update failed" dialog.
+    powershell = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    try:
+        subprocess.Popen(
+            [str(powershell), "-NoProfile", "-WindowStyle", "Hidden", "-Command", command],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except OSError as error:
+        log(f'程序已更新并启动；临时更新器目录留待下次清理：{error}')
 
 
 def show_error(message: str) -> None:
