@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .gacha_stats import fallback_category_key, history_category_key
+from .gacha_stats import history_category_key
 from .history_schema import HISTORY_CATEGORY_IDS
 
 

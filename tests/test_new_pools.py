@@ -282,7 +282,7 @@ class ActivityPoolViewTests(unittest.TestCase):
         official_banners.set_active_banners({}, {})
 
     def test_activity_pools_groups_by_gid_with_counts(self):
-        from stellasora_toolkit.ui.beta_model import activity_pools
+        from stellasora_toolkit.presentation import activity_pools
         rows = activity_pools(self.RECORDS)
         self.assertEqual(len(rows), 1, "只有 1002 是活动池")
         row = rows[0]
@@ -292,7 +292,7 @@ class ActivityPoolViewTests(unittest.TestCase):
         self.assertEqual(row["name"], "异途一世·自选（活动）")
 
     def test_ordinary_pools_are_not_listed(self):
-        from stellasora_toolkit.ui.beta_model import activity_pools
+        from stellasora_toolkit.presentation import activity_pools
         rows = activity_pools([{"Gid": 10162, "Time": 1, "Ids": [162]}])
         self.assertEqual(rows, [])
 
@@ -304,7 +304,7 @@ class ActivityPoolViewTests(unittest.TestCase):
 
     def test_display_grouping_shows_activity_pools_under_limited(self):
         from stellasora_toolkit.gacha_stats import display_category
-        from stellasora_toolkit.ui.beta_model import categories
+        from stellasora_toolkit.presentation import categories
         grouped = categories([dict(TRAVELER_PULL), dict(DISC_PULL)])
         shown = sorted(key for key, value in grouped.items() if value)
         self.assertTrue(shown, "活动池不能从界面消失")
@@ -323,7 +323,7 @@ class StaticPoolNameTests(unittest.TestCase):
             self.assertNotIn("卡池", info[0])
 
     def test_pool_table_is_large_enough(self):
-        from stellasora_toolkit.ui.constants import OFFICIAL_LIMITED_POOL_INFO
+        from stellasora_toolkit.constants import OFFICIAL_LIMITED_POOL_INFO
         self.assertGreaterEqual(len(OFFICIAL_LIMITED_POOL_INFO), 70, "内置卡池表应覆盖全部历史卡池")
 
     def test_small_gid_pools_are_not_activity(self):
@@ -337,7 +337,7 @@ class StaticPoolNameTests(unittest.TestCase):
         """周年特选算活动卡池: 界面不再单独占一类。"""
         from stellasora_toolkit.official_banners import is_activity_pool
         from stellasora_toolkit.gacha_stats import display_category
-        from stellasora_toolkit.ui.beta_model import activity_pools
+        from stellasora_toolkit.presentation import activity_pools
         self.assertTrue(is_activity_pool(1001))
         rows = activity_pools([{"Gid": 1001, "Time": 1, "Ids": [162]}])
         self.assertEqual([row["gid"] for row in rows], [1001])

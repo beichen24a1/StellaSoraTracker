@@ -10,7 +10,7 @@ from pathlib import Path
 from . import app_updater, archive_layout
 from .application import read_preferences, safe_message
 from .project import GITHUB_REPOSITORY
-from .ui.constants import APP_VERSION
+from .constants import APP_VERSION
 
 
 class DesktopUpdates:

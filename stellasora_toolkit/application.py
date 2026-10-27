@@ -18,7 +18,7 @@ from .gacha_stats import build_banner_stats_with_shared_pity
 from .presentation import activity_pools, categories, overview
 from .process import find_game_processes
 from .storage_lock import storage_transaction
-from .ui.constants import APP_VERSION, GACHA_CATEGORY_NAMES, GACHA_CATEGORY_ORDER, GACHA_CATEGORY_PITY_LIMITS
+from .constants import APP_VERSION, GACHA_CATEGORY_NAMES, GACHA_CATEGORY_ORDER, GACHA_CATEGORY_PITY_LIMITS
 
 MANUAL_UPLOAD_URL = 'https://share.fnnas.net/s/8b355174d383436899'
 LIMITED = ('traveler_limited', 'disc_limited')

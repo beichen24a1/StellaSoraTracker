@@ -5,7 +5,7 @@
 StellaBase 公开接口 /api/stella/banners 提供全部卡池的最新信息:
     id / name / bannerType / startTime / endTime / rateUp.fiveStar.entries[].name
 
-工具旧版本把卡池信息写在 ui/constants.py 的 OFFICIAL_LIMITED_POOL_INFO 静态表里,
+工具旧版本把卡池信息写在 constants.py 的 OFFICIAL_LIMITED_POOL_INFO 静态表里,
 每次游戏更新卡池都要手动编辑。本模块把它变成运行时自动拉取:
 
 - fetch_banners()           拉取并解析为与静态表相同的 {gid: (名称, 开始, 结束, UP名)};
@@ -25,11 +25,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from . import server_config
-from .ui.constants import OFFICIAL_LIMITED_POOL_INFO
+from .constants import OFFICIAL_LIMITED_POOL_INFO
 
 BANNERS_API_URL = "https://stella.ennead.cc/api/stella/banners"
 

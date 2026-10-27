@@ -1,12 +1,10 @@
-"""Presentation data shared by the three UI betas; no archive writes."""
+"""Presentation data for the desktop application; no archive writes."""
 from dataclasses import dataclass, field
-from datetime import datetime
 
 from .catalog import gacha_item_name, same_item_name
 from .gacha_stats import build_category_stat, build_banner_stats_with_shared_pity, display_category
-from .service import Snapshot
 from .official_banners import official_pool_info
-from .ui.constants import GACHA_CATEGORY_ORDER, OFFICIAL_LIMITED_POOL_INFO
+from .constants import GACHA_CATEGORY_ORDER, OFFICIAL_LIMITED_POOL_INFO
 from .gacha_display import build_spark_rewards
 
 

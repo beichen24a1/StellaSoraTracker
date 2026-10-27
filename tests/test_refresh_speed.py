@@ -160,35 +160,6 @@ class AutoExportTests(unittest.TestCase):
         self.assertEqual(len(payload["categories"]["1"]), 1)
 
 
-class SkippedReportTextTests(unittest.TestCase):
-    """界面文案: 跳过在线查询时不能再说"五星目录 0 个角色"。"""
-
-    @staticmethod
-    def _report(**overrides) -> dict:
-        report = {
-            "fetched_total": 0, "fetched_travelers": 0, "fetched_discs": 0,
-            "record_count": 70, "skipped_online": True, "fetch_failed": 0,
-            "missing_before": [], "registered": [], "downloaded": [], "existing": [],
-            "icon_failed": [],
-            "audit_before": {"unresolved": [], "misjudged": [], "clash": []},
-            "audit_after": {"unresolved": [], "misjudged": [], "clash": []},
-        }
-        report.update(overrides)
-        return report
-
-    def test_skipped_online_text(self):
-        from stellasora_toolkit.ui.window import _format_sync_report
-
-        text, problems = _format_sync_report(self._report())
-        self.assertIn("已跳过在线查询", text)
-        self.assertEqual(problems, [])
-
-    def test_normal_report_still_reports_catalog_size(self):
-        from stellasora_toolkit.ui.window import _format_sync_report
-
-        text, _ = _format_sync_report(self._report(skipped_online=False, fetched_travelers=24,
-                                                   fetched_discs=59))
-        self.assertIn("24 个角色", text)
 
 
 if __name__ == "__main__":

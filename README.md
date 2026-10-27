@@ -14,7 +14,7 @@
 
 具体代码贡献以保留的 Git 提交历史及 [上游来源记录](docs/upstream-imports.json) 为准。仓库所有权变更不替换原作者署名。后续免安装 ZIP 会随包附带 `LICENSE` 与本说明。
 
-MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素材的权利；这类素材及外部资料保留各自权利和适用条款。Electron、Vue、Pillow 等依赖继续适用各自许可证，随包附有第三方许可；旧 Qt 开发入口中的 PySide6 也保留其许可，本项目的 MIT 不替代它们。
+MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素材的权利；这类素材及外部资料保留各自权利和适用条款。Electron、Vue、Pillow 等依赖继续适用各自许可证，随包附有第三方许可，本项目的 MIT 不替代它们。
 
 ## 下载 Windows 版本
 
@@ -24,9 +24,9 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 更新界面增加可滚动的更新说明、下载进度/速度/剩余时间、后台下载、取消、重试和稍后安装；已校验的更新包在重启后重新核验再恢复。任务与日志从底部状态栏打开，上传地址和归档原文不进入日志。完整迁移对照见 [功能对照表](docs/electron-parity.json)。
 
-开发环境需要 Node.js 22.12+、Python 3.10+；运行 `python -m pip install -e ".[dev]"` 后，用 `./run.ps1` 构建并打开新客户端。首次会通过 `npm ci` 安装前端依赖；旧 Qt 对照入口为 `./run_qt_legacy.ps1`。渲染器热更新可另起 `frontend` 中的 `npm run dev`，通过 `VITE_DEV_SERVER_URL` 连接；正式程序只加载本地打包页面。
+开发环境需要 Node.js 22.12+、Python 3.10+；运行 `python -m pip install -e ".[dev]"` 后，用 `./run.ps1` 构建并打开新客户端。首次会通过 `npm ci` 安装前端依赖。渲染器热更新可另起 `frontend` 中的 `npm run dev`，通过 `VITE_DEV_SERVER_URL` 连接；正式程序只加载本地打包页面。
 
-本地验收构建：`./build_electron.ps1`（或 `./build_release.ps1`），输出 `release/StellaSoraGachaTool-Electron-local-win64.zip`，不会更新正式版本号、发布清单或 tag。包内自带 Python 核心和 Electron 运行时，**不需要用户安装 Python，也不携带 PySide6 界面运行库**。主程序清单为 `asInvoker`：双击 `启动器.exe` 以普通模式启动，读取游戏时再按提示授权一次；数据仍在程序旁的 `exports`。Qt 构建仅供开发对照：`./build_qt_legacy.ps1`。
+本地验收构建：`./build_electron.ps1`（或 `./build_release.ps1`），输出 `release/StellaSoraGachaTool-Electron-local-win64.zip`，不会更新正式版本号、发布清单或 tag。包内自带 Python 核心和 Electron 运行时，**不需要用户安装 Python，也不携带 PySide6 界面运行库**。主程序清单为 `asInvoker`：双击 `启动器.exe` 以普通模式启动，读取游戏时再按提示授权一次；数据仍在程序旁的 `exports`。
 
 验证命令：`./.venv/Scripts/python.exe tools/run_tests.py`；前端目录执行 `npm test`、`npm run test:e2e`。冻结包与中文路径验收工具为 `tools/verify_electron_package.py`，会复制包到独立目录，并校验客户端清单不强制提权、`启动器.exe` 随包提供。
 
@@ -44,11 +44,9 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 ### 已发布版本
 
-当前正式版为 [1.3.2](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.2)，下载 `StellaSoraGachaTool-1.3.2-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 exe。原 sfjdk 版可复制完整 `exports` 到新版程序旁；原 zhenkotone 版可在首次使用时识别根目录已有的有效 `<UID>.json`，也可使用导入，原文件请保留。[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 单独保留。
+当前公开测试版为 [1.3.0.bata2](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata2)，下载 `StellaSoraGachaTool-1.3.0.bata2-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 EXE。[b2 更新说明](docs/releases/v1.3.0.bata2.md)、[b1 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata1) 和原有[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 分别保留。
 
-本次更新与校验说明见 [1.3.2 更新日志](docs/releases/v1.3.2.md)。`1.3.0.bata2` 是首个 Electron 测试版，历史 `1.3.0.bata1` 保留为 Qt 客户端。
-
-测试渠道：[1.3.3.bata1](docs/releases/v1.3.3.bata1.md) 为普通模式启动器测试版，走独立的 `app_update_beta.json` 清单，在「数据与设置」切到测试渠道即可收到；稳定版入口不受影响。
+已撤下 `1.3.2`、`1.3.3.bata1` 的公开发行入口；测试更新清单恢复到 b2，稳定更新清单恢复到原有稳定资产。当前源码仍保留后续加入的好感度、普通模式启动及按需提权修复，本次清理没有重新发版；源码功能范围与历史下载包请分别查看。
 
 发行形式继续只提供 Windows 免安装 ZIP，不另外提供安装向导版。
 
@@ -61,29 +59,15 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 上传成功表示归档已暂存，**每次仍需向蕾姆发送「星塔抽卡绑定 UID …」指令确认正式更新**；指令显示在「上传与分享」中。自动上传不会代发绑定指令。
 
-开发验证：`./.venv/Scripts/python.exe tools/run_tests.py`，Qt 测试在离屏模式运行并及时释放测试窗口。
+开发验证：`./.venv/Scripts/python.exe tools/run_tests.py`；前端目录执行 `npm test` 和 `npm run test:e2e`。Python 核心及测试不依赖 Qt。
 
 ## 界面主题
 
 Electron 版仅提供白色和黑色，主题在“数据与设置”切换并记忆；页面、导航、弹窗和任务面板带过渡动画，遵循系统“减少动态效果”设置。记录页以头像和五星间隔条展示紧凑的卡池历史，保留一列、两列和自动排布。
 
-下表及截图链接为旧 Qt 客户端的开发对照；旧版首次默认使用晴空工作台：
+主题、卡池列数和自动化偏好保存在输出目录的 `ui_settings.json`，账号切换不影响偏好。旧主题设置继续映射到白黑主题，其他未知配置字段保留。卡池详情可选择自动排布、一列、两列，并在重启后恢复。
 
-| 方向 | 风格 |
-| --- | --- |
-| A · 星轨夜航 | 深海蓝、头像星轨、侧栏导航 |
-| B · 晴空工作台 | 冰蓝白、清晰统计、左侧导航 |
-| C · 旅人手札 | 雾紫纸张、相遇照片、卡池档案 |
-
-开发者首次运行可创建 `.venv` 并安装 `.[dev]`，按上方开发步骤启动 Electron；旧 Qt 对照入口需安装 `.[legacy-ui]`。ZIP 用户直接解压运行即可。
-
-三套主题的菜单均在左侧。主题、卡池列数和自动化偏好保存在输出目录的 `ui_settings.json`，账号切换不影响偏好。卡池详情可选择自动排布、一列、两列，并在重启后恢复。
-
-应用始终加载本地归档；公开命令行中的 `--demo`、`--beta` 和演示启动脚本已移除。测试工具内部可使用内存样例做离屏验证。读取游戏时不需要一启动就带管理员权限：普通模式下按提示授权并重启一次即可。
-
-打开 [三套 UI 截图预览](ui-beta/index.html) 可切换查看首页、记录页、设置页和 960px 小窗口效果。截图由真实 Qt 控件渲染，使用演示记录。原生窗口支持卡池筛选、名称搜索、五星/全部记录切换、归档导入、JSON/CSV 导出、备份和更新检查。
-
-重新生成截图：`./.venv/Scripts/python.exe tools/render_ui_betas.py`。
+当前源码只保留 Electron 桌面入口及 Python 命令行。旧 Qt 三主题、今日运势、截图预览生成器和独立音量常驻工具已移除；历史实现仍可从 Git 提交及旧版本标签查看。旧归档迁移、UID 归属校验和更新兼容逻辑继续保留。
 
 ## 软件是做什么的
 

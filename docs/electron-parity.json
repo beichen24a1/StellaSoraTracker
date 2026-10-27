@@ -81,24 +81,37 @@
       "中文与空格路径",
       "许可署名",
       "隐私排除"
+    ],
+    "affinity": [
+      "独立好感度页",
+      "按 UID 独立存档",
+      "读取与加载",
+      "搜索筛选",
+      "收藏与排序",
+      "不混入招募归档"
     ]
   },
   "status": "implemented; verification results are recorded in the task and build reports",
   "verification": {
     "python": [
-      "existing core and Qt parity tests",
       "tests/test_desktop_application.py",
-      "tests/test_electron_distribution.py"
+      "tests/test_presentation.py",
+      "tests/test_reviewed_integration.py",
+      "tests/test_affinity.py",
+      "tests/test_electron_distribution.py",
+      "existing archive, UID, upload, updater and catalog suites; no Qt dependency"
     ],
     "frontend": [
       "frontend/tests/unit/workflows.test.ts",
-      "frontend/tests/unit/version.test.ts"
+      "frontend/tests/unit/version.test.ts",
+      "frontend/tests/unit/affinity.test.ts"
     ],
     "electron": [
       "frontend/tests/e2e/desktop.spec.ts",
       "frontend/tests/e2e/update.spec.ts",
       "frontend/tests/e2e/package.spec.ts",
-      "frontend/tests/e2e/large-archive.spec.ts"
+      "frontend/tests/e2e/large-archive.spec.ts",
+      "frontend/tests/e2e/affinity.spec.ts"
     ],
     "packaging": [
       "tools/pack_electron_local.py",
@@ -140,7 +153,7 @@
         "test_desktop_application: raw_anniversary/100k/intervals",
         "desktop.spec.ts",
         "large-archive.spec.ts",
-        "existing gacha_stats/beta_model tests"
+        "gacha_stats and test_presentation tests"
       ]
     },
     {
@@ -197,25 +210,36 @@
     },
     {
       "entry": "ZIP / 默认启动",
-      "behavior": "独立 Python 核心、生产管理员清单、隔离上下文沙箱、中文空格路径、运行数据排除",
+      "behavior": "独立 Python 核心、普通权限启动清单与按需提权、隔离上下文沙箱、中文空格路径、运行数据排除",
       "tests": [
         "test_electron_distribution",
         "verify_electron_package.py",
         "package.spec.ts"
       ]
+    },
+    {
+      "entry": "好感度 / 读取好感度",
+      "behavior": "独立路由及 UID 存档；等级经验展示、搜索排序和收藏；读取时按需提权",
+      "tests": [
+        "tests/test_affinity.py",
+        "tests/test_elevation.py",
+        "frontend/tests/unit/affinity.test.ts",
+        "frontend/tests/e2e/affinity.spec.ts"
+      ]
     }
   ],
   "acceptance": {
-    "pythonTests": 520,
-    "vueTests": 8,
-    "electronFlows": 4,
+    "pythonTests": 481,
+    "vueTests": 11,
+    "electronFlows": 5,
     "largeArchiveRecords": 100000,
     "releaseCreated": false,
     "versionChanged": false,
     "limitations": [
-      "未执行真实游戏客户端内存抓取；保留原抓取核心并通过原有测试。",
-      "操作系统 UAC 弹框未自动点击；交付 EXE 的 requireAdministrator 清单已校验，一次性自动化副本使用 asInvoker。",
+      "未执行真实游戏客户端招募/好感度内存读取；保留原读取核心及回归。",
+      "操作系统 UAC 弹框未自动点击；交付客户端 asInvoker 清单已校验，按需提权逻辑另有回归。",
       "网络异常使用测试专用替身复现；未触发真实对外上传或生产更新安装。"
     ]
-  }
+  },
+  "cleanupBaseline": "be0376f"
 }

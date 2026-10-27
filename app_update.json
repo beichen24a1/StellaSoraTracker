@@ -1,6 +1,6 @@
 {
-  "version": "1.3.2",
-  "url": "https://github.com/beichen24a1/StellaSoraTracker/releases/download/v1.3.2/StellaSoraGachaTool-1.3.2-win64.zip",
-  "sha256": "180af6e91dd4c495f59741ae2e16841e697bb9664eab812a7994271802ddd456",
-  "notes": "新增「好感度」页（按 UID 单独存档）、修复部分等级升级经验读错、补齐 16 张四星角色头像；530 项自动化测试通过。更新器只由主程序自动调用，请直接运行 StellaSoraGachaTool.exe。"
+  "version": "1.3.1",
+  "url": "https://github.com/beichen24a1/StellaSoraTracker/releases/download/v1.3.0/StellaSoraGachaTool-1.3.1-win64.zip",
+  "sha256": "fa7ae7a20a319bbe3d082076c6894b4f349b3edd7200e7302498fe4968620013",
+  "notes": "UID 读取修复（玩家表优先、支持本地化标签、临时失败不再锁会话）；周年特选并入活动卡池；上传接口固定隐藏；472 项测试通过。更新器只由主程序自动调用，请直接运行 StellaSoraGachaTool.exe。"
 }

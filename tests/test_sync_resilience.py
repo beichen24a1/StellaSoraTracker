@@ -221,30 +221,6 @@ class BannerRefreshTests(unittest.TestCase):
             self.assertFalse(cache.exists(), "失败时不该写出半截缓存")
 
 
-class ReportTextTests(unittest.TestCase):
-    def _report(self, **overrides) -> dict:
-        report = {
-            "fetched_total": 1, "fetched_travelers": 1, "fetched_discs": 0,
-            "record_count": 0,
-            "missing_before": [], "registered": [], "downloaded": [], "existing": [],
-            "icon_failed": [],
-            "audit_before": {"unresolved": [], "misjudged": [], "clash": []},
-            "audit_after": {"unresolved": [], "misjudged": [], "clash": []},
-        }
-        report.update(overrides)
-        return report
-
-    def test_cache_fallback_is_visible_in_the_text(self):
-        from stellasora_toolkit.ui.window import _format_sync_report
-
-        text, _ = _format_sync_report(self._report(catalog_from_cache=True))
-        self.assertIn("上次缓存", text)
-
-    def test_normal_report_has_no_cache_note(self):
-        from stellasora_toolkit.ui.window import _format_sync_report
-
-        text, _ = _format_sync_report(self._report())
-        self.assertNotIn("上次缓存", text)
 
 
 if __name__ == "__main__":
