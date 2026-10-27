@@ -1,6 +1,6 @@
 {
-  "version": "1.3.0.bata2",
-  "url": "https://github.com/beichen24a1/StellaSoraTracker/releases/download/v1.3.0.bata2/StellaSoraGachaTool-1.3.0.bata2-win64.zip",
-  "sha256": "1ffb2a5c0665637ec5a8e1fe2f99b11f1ae0d6a39ecddcbce8c77cd6bbc795af",
-  "notes": "# 1.3.0.bata2 · Electron 界面重写测试版\n\n本版为 Windows x64 预发布版本，仅提供免安装 ZIP，使用独立测试更新渠道；稳定版入口继续保留。\n\n## 本次更新\n\n- 使用 Vue 3 + TypeScript + Electron 重写桌面界面，保留 Python 抓取、统计、归档与上传核心，以及左侧五页导航。\n- 保留抓取与进程选择、服务器识别、UID 校验、多账号、导入导出与拖放、备份、资源补全、上传和绑定等功能。延续账号隔离、迁移保留原文件和并发写档保护。\n- 界面统一为白、黑两种主题，首次默认白色；旧星轨主题映射黑色，晴空和手札映射白色。选择可记忆，切换时保留输入与筛选。\n- 招募记录改为紧凑的纵向卡池历史，突出本池累计抽数，增加头像与五星间隔条。色条使用同页统一刻度，保留 UP、歪和兑换奖励标记，奖励不计入抽数与五星统计。\n- 补齐页面、导航、卡片、弹窗、更新步骤与任务面板的过渡动画，并遵循系统“减少动态效果”设置。\n- 移除今日运势，保留五星概率、平均抽数、垫抽等客观统计。\n- 更新界面加入可滚动说明、下载百分比、大小、速度、预计剩余时间、后台下载、取消、重试和稍后安装。重新启动后重新核验 SHA-256；安装前等待相关进程退出，保留归档、配置保护和替换失败回滚。\n- 新增底部任务与日志面板及后台断线重连，日志隐藏上传地址与归档原文。记录由 Python 筛选与分页，已验证十万条记录的分页和搜索。\n- ZIP 自带 Electron 和独立 Python 核心，无需安装 Python，不携带 PySide6 界面运行库。继续附带 MIT 许可证、来源署名及第三方许可。\n\n## 下载与升级\n\n下载 `StellaSoraGachaTool-1.3.0.bata2-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，启动时按提示授予管理员权限。`StellaSoraUpdater.exe` 仅供主程序调用。\n\n**升级前备份整个 `exports`。** 使用新目录解压时，将旧版完整 `exports` 复制到新版程序旁；保留 `<UID>.json`、账号配置、备份和旧档。请完整解压程序，不要只替换单个 EXE。旧 Qt 版可在历史 Release 下载。\n\n## 验证与范围\n\n- Python 核心与接口测试、Vue 组件测试、Electron 端到端操作以及十万条记录测试通过。\n- 验证了中文与空格路径、无 Python/Node 环境、生产管理员清单、许可文件和运行数据排除。\n- 验证了更新取消、网络失败重试、哈希错误、稍后安装恢复和文件替换失败回滚；网络异常由测试替身复现。\n- 本次没有执行真实游戏客户端的内存抓取或真实对外上传，相关核心逻辑及其既有测试继续保留。\n\n版本名称沿用维护者指定的 `bata` 拼写；Python 元数据为 `1.3.0b2`，Electron 元数据为 `1.3.0-beta.2`。\n"
+  "version": "1.3.3.bata1",
+  "url": "https://github.com/beichen24a1/StellaSoraTracker/releases/download/v1.3.3.bata1/StellaSoraGachaTool-1.3.3.bata1-win64.zip",
+  "sha256": "f9d7f06c675dba63187f818ddc7dfc619a8990ad9bfb2c106f678eee94e5610a",
+  "notes": "# 1.3.3.bata1 · 普通模式启动器测试版\n\n- 双击 `启动器.exe` 以普通模式启动，不再一启动就弹 UAC；点「抓取抽卡记录」「读取游戏 UID」「读取好感度」时提示一次并以管理员身份重启后续操作。\n- 修复自动更新后程序文件只剩管理员权限、双击启动失败的问题：更新改为复制落地继承程序目录权限，安装后校验自带 exe 对普通用户可读可执行，失败自动回滚。\n- 更新程序会清理上次更新残留的 `stellasora-updater-*` / `stellasora-update-work-*` 临时目录。\n\n普通模式需要在程序目录写入 `exports` 和 `.desktop`，请放在有写权限的目录。升级前备份整个 `exports`，完整解压，不要只替换单个 exe。"
 }
