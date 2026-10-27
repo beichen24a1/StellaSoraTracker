@@ -1,4 +1,4 @@
-"""Default source launcher for the Electron client. The Qt entry stays available separately."""
+"""Source launcher for the Electron desktop client."""
 import argparse
 import os
 import subprocess
@@ -15,7 +15,7 @@ def main(argv=None):
     executable=root/'frontend/node_modules/electron/dist/electron.exe'
     compiled=root/'frontend/dist-electron/main.cjs'
     if not executable.is_file() or not compiled.is_file():
-        print('请先运行 run_electron.ps1 安装并构建客户端；旧 Qt 对照入口为 run_qt_legacy.ps1。',file=sys.stderr)
+        print('请先运行 run_electron.ps1 安装并构建客户端。',file=sys.stderr)
         return 1
     environment=dict(os.environ,STELLA_OUTPUT=str(args.output.resolve()),STELLA_PROFILE=str(root/'build/electron-preview-profile'))
     for key in ('ELECTRON_RUN_AS_NODE','NODE_OPTIONS'):

@@ -1,21 +1,16 @@
 import contextlib
 import io
 import json
-import os
-os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from PySide6.QtWidgets import QApplication, QMessageBox
-from stellasora_toolkit import accounts, service, server_config, rem_upload, exporter, gui
+from stellasora_toolkit import accounts, service, server_config, rem_upload, exporter
 from stellasora_toolkit.account_guard import AccountSafetyError
 from stellasora_toolkit.account_uid import UidSearch
 from stellasora_toolkit.account_verification import verified_uid_search
-from stellasora_toolkit.ui.window import StellaSoraApp
-from stellasora_toolkit.ui.beta_model import overview
-from stellasora_toolkit.gacha_stats import build_banner_stats_with_shared_pity
+from stellasora_toolkit.presentation import overview
 from stellasora_toolkit.process import GameProcess
 
 
@@ -150,75 +145,33 @@ class CombinedUidTests(unittest.TestCase):
         self.assertEqual(self.check(UidSearch(budget_exceeded=True),'100000001').uid,'100000001')
 
 
-class ReviewedUiTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls): cls.app=QApplication.instance() or QApplication([])
-    def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory()
-        self.root=Path(self.tmp.name)
-        self.window=StellaSoraApp(self.root,online_sync=False)
-    def tearDown(self):
-        self.window._set_busy(False); self.window.close(); self.window.deleteLater()
-        self.app.processEvents(); self.tmp.cleanup()
-
-    def test_manual_columns_survive_theme_and_restart(self):
-        self.window.pool_columns.setCurrentIndex(1)
-        self.assertEqual(self.window.home._columns,1)
-        self.window.change_variant('sky')
-        self.assertEqual(self.window.home._columns,1)
-        restarted=StellaSoraApp(self.root,online_sync=False)
-        try: self.assertEqual(restarted.home.column_choice,1)
-        finally: restarted.close(); restarted.deleteLater()
-
-    def test_manual_backup_callback_creates_valid_copy(self):
-        incoming=self.root/'incoming.json'
-        incoming.write_text(json.dumps({'uid':'100000001','categories':{'6':[group()]}}))
-        self.window._import_paths([incoming])
-        with patch('stellasora_toolkit.ui.controller.QMessageBox.information'):
-            self.window.settings._cb['backup']()
-        backups=list((self.root/'backups').glob('*.json'))
-        self.assertEqual(len(backups),1)
-        self.assertEqual(json.loads(backups[0].read_text())['uid'],'100000001')
-
+class CurrentInterfaceTests(unittest.TestCase):
     def test_anniversary_is_shown_as_an_activity_pool(self):
-        snap=service.Snapshot([group()],gacha_categories={6:[group()]},uid='100000001')
-        self.window._apply_snapshot(snap)
-        cats=[card.cat for card in self.window.home.cards]
-        self.assertNotIn('anniversary_selected',cats)
-        self.assertEqual(len(cats),4)
-        stats=overview([group()])
-        self.assertIsNotNone(stats.category_stats['traveler_limited'])
-        self.assertEqual(len(stats.category_stats['traveler_limited'].five_stars),2)
-        from stellasora_toolkit.ui.beta_model import activity_pools
-        self.assertEqual([row['gid'] for row in activity_pools([group()])],[1001])
-        self.window.records.set_filter('activity')
-        self.assertEqual(self.window.records.current,'activity')
-        self.assertEqual(len(build_banner_stats_with_shared_pity([group()])[0].five_stars),2)
+        from stellasora_toolkit.presentation import activity_pools
+        stats = overview([group()])
+        self.assertEqual(len(stats.category_stats), 4)
+        self.assertNotIn('anniversary_selected', stats.category_stats)
+        self.assertEqual(len(stats.category_stats['traveler_limited'].five_stars), 2)
+        self.assertEqual([row['gid'] for row in activity_pools([group()])], [1001])
 
     def test_process_picker_selects_exact_pid(self):
-        choices=[GameProcess('StellaSora.exe',10,'D:/one.exe'),GameProcess('StellaSora.exe',20,'D:/two.exe')]
-        with patch('stellasora_toolkit.ui.controller.find_game_processes',return_value=choices), \
-             patch('stellasora_toolkit.ui.controller.QInputDialog.getItem',return_value=('StellaSora.exe · PID 20 · D:/two.exe',True)):
-            self.assertEqual(self.window._choose_game_process().pid,20)
-            self.assertEqual(server_config.load_key(server_config.config_path(self.root)),'intl')
+        from stellasora_toolkit.application import Application
+        previous = server_config.active().key
+        self.addCleanup(server_config.set_active, previous)
+        choices = [GameProcess('StellaSora.exe', 10, 'D:/one.exe'), GameProcess('StellaSora.exe', 20, 'D:/two.exe')]
+        with tempfile.TemporaryDirectory() as directory:
+            app = Application(Path(directory), offline=True)
+            with patch('stellasora_toolkit.application.find_game_processes', return_value=choices):
+                self.assertEqual(app.select_process(20).pid, 20)
+                self.assertEqual(server_config.load_key(server_config.config_path(app.output)), 'intl')
 
     def test_cli_combines_server_and_pid(self):
         from stellasora_toolkit.cli import build_parser
-        args=build_parser().parse_args(['--server','tw','--pid','20'])
-        self.assertEqual((args.server,args.pid),('tw',20))
-
-    def test_manual_uid_cannot_relabel_an_owned_archive(self):
-        source=self.root/'incoming.json'
-        source.write_text(json.dumps({'uid':'100000001','categories':{'6':[group()]}}))
-        self.window._import_paths([source])
-        original=service.active_archive_path(self.root).read_bytes()
-        with patch('stellasora_toolkit.ui.controller.QMessageBox.warning') as warning:
-            self.window._save_uid('100000002')
-        warning.assert_called_once()
-        self.assertEqual(service.effective_uid(self.root),'100000001')
-        self.assertEqual(service.active_archive_path(self.root).read_bytes(),original)
+        args = build_parser().parse_args(['--server', 'tw', '--pid', '20'])
+        self.assertEqual((args.server, args.pid), ('tw', 20))
 
     def test_removed_demo_cli_flags_are_rejected(self):
-        for flag in ('--demo','--beta'):
+        from stellasora_toolkit.desktop_launcher import main
+        for flag in ('--demo', '--beta'):
             with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-                gui.build_parser().parse_args([flag])
+                main([flag])

@@ -17,7 +17,7 @@ test('extracted package uses frozen Python core without Python or Node on PATH',
     await expect(page.locator('.metric-card').first()).toContainText('2')
     const state=await page.evaluate(()=>window.stella.request('app.state'))
     expect(state.packaged).toBe(true);expect(state.summary.pulls).toBe(2)
-    const displayVersion=/^APP_VERSION\s*=\s*["']([^"']+)["']/m.exec(fs.readFileSync(path.resolve(frontend,'../stellasora_toolkit/ui/constants.py'),'utf8'))![1]
+    const displayVersion=/^APP_VERSION\s*=\s*["']([^"']+)["']/m.exec(fs.readFileSync(path.resolve(frontend,'../stellasora_toolkit/constants.py'),'utf8'))![1]
     expect(state.version).toBe(displayVersion)
     expect(await desktop.evaluate(({app})=>app.getVersion())).toBe(JSON.parse(fs.readFileSync(path.join(frontend,'package.json'),'utf8')).version)
     expect(await desktop.evaluate(({app})=>app.isPackaged)).toBe(true)

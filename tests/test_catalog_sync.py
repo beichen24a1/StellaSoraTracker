@@ -150,46 +150,6 @@ class DownloadIconTests(unittest.TestCase):
             self.assertTrue(target.exists())
 
 
-class FormatReportTests(unittest.TestCase):
-    def _fake_report(self, unresolved_after=(), misjudged_after=(), icon_failed=()):
-        return {
-            "fetched_total": 2, "fetched_travelers": 1, "fetched_discs": 1,
-            "record_count": 2,
-            "missing_before": [{"id": TEST_TRAVELER_ID, "kind": "traveler", "name": "测试旅人"}],
-            "registered": [],
-            "downloaded": [],
-            "existing": [],
-            "icon_failed": list(icon_failed),
-            "audit_before": {"unresolved": [TEST_TRAVELER_ID],
-                             "misjudged": [{"id": TEST_TRAVELER_ID, "kind": "traveler"}],
-                             "clash": []},
-            "audit_after": {"unresolved": list(unresolved_after),
-                            "misjudged": list(misjudged_after),
-                            "clash": []},
-        }
-
-    def test_aligned_report_is_positive(self):
-        from stellasora_toolkit.ui.window import _format_sync_report
-        text, problems = _format_sync_report(self._fake_report())
-        self.assertIn("回显缺失 1→0 ✔", text)
-        self.assertIn("五星判定错位 1→0 ✔", text)
-        self.assertIn("✔ 序号与角色已全部对齐", text)
-        self.assertEqual(problems, [])
-
-    def test_misaligned_report_lists_problems(self):
-        from stellasora_toolkit.ui.window import _format_sync_report
-        text, problems = _format_sync_report(
-            self._fake_report(unresolved_after=[TEST_TRAVELER_ID]))
-        self.assertIn("回显缺失 1→1 ✘", text)
-        self.assertEqual(len(problems), 1)
-        self.assertIn("无法回显", problems[0])
-
-    def test_no_records_mentions_data_refresh(self):
-        from stellasora_toolkit.ui.window import _format_sync_report
-        report = self._fake_report()
-        report["record_count"] = 0
-        text, _ = _format_sync_report(report)
-        self.assertIn("暂无本地抽卡记录", text)
 
 
 if __name__ == "__main__":

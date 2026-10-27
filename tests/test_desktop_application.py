@@ -6,9 +6,10 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from stellasora_toolkit import accounts, app_updater, service, server_config
+from stellasora_toolkit import accounts, app_updater, rem_upload, service, server_config
 from stellasora_toolkit.application import Application, read_preferences, safe_message
 from stellasora_toolkit.desktop_engine import Engine
 from stellasora_toolkit.desktop_updates import DesktopUpdates
@@ -61,6 +62,30 @@ class ApplicationTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 self.app.save_preferences(change)
 
+    def test_invalid_preferences_are_read_without_rewriting_the_file(self):
+        path = self.output/'ui_settings.json'
+        self.assertFalse(path.exists())
+        self.assertEqual(read_preferences(self.output)['color_mode'], 'light')
+        self.assertFalse(path.exists())
+        for text in ('{broken', '[]', 'null', '{"theme":[]}'):
+            path.write_text(text, encoding='utf-8')
+            self.assertEqual(read_preferences(self.output)['color_mode'], 'light')
+            self.assertEqual(path.read_text('utf-8'), text)
+
+    def test_failed_preference_save_preserves_settings_and_archive(self):
+        self.import_one()
+        self.app.save_preferences({'color_mode': 'dark', 'pool_columns': 2})
+        path = self.output/'ui_settings.json'
+        before = path.read_bytes()
+        archive = (self.output/'100000001.json').read_bytes()
+        with patch('stellasora_toolkit.archive_layout.os.replace', side_effect=OSError('disk full')):
+            with self.assertRaises(OSError):
+                self.app.save_preferences({'color_mode': 'light', 'pool_columns': 1})
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual((self.output/'100000001.json').read_bytes(), archive)
+        self.assertEqual(list(self.output.glob('.archive-*.tmp')), [])
+        self.assertEqual(read_preferences(self.output)['pool_columns'], 2)
+
     def test_import_export_share_and_summary_keep_raw_anniversary_category(self):
         categories = {'1': [group()], '6': [group(200,1001,[162,103])]}
         self.import_one(categories=categories)
@@ -86,6 +111,56 @@ class ApplicationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.app.import_files([str(source)], lambda _msg: None)
         self.assertEqual(archive.read_bytes(), before)
+
+    def test_auto_upload_skips_unchanged_import_and_sends_new_records(self):
+        self.app.offline = False
+        self.app.save_preferences({'auto_upload': True})
+        reply = rem_upload.RemUploadResult(200, uid='100000001')
+        with patch.object(rem_upload, 'upload_file', return_value=reply) as send:
+            self.import_one()
+            self.import_one()
+            self.assertEqual(send.call_count, 1)
+            self.import_one(categories={'1': [group(300)]})
+            self.assertEqual(send.call_count, 2)
+        self.assertEqual(self.app.state()['summary']['pulls'], 4)
+
+    def test_auto_upload_uses_each_accounts_archive_and_switch_off_keeps_manual_upload(self):
+        self.app.offline = False
+        self.app.save_preferences({'auto_upload': True})
+        sent = []
+        def upload(path):
+            payload = json.loads(path.read_text('utf-8'))
+            self.assertEqual(path.stem, payload['uid'])
+            sent.append(payload['uid'])
+            return rem_upload.RemUploadResult(200, uid=payload['uid'])
+        with patch.object(rem_upload, 'upload_file', side_effect=upload):
+            self.import_one()
+            self.import_one('100000002', {'1': [group(500, ids=[103, 110])]})
+            self.assertEqual(sent, ['100000001', '100000002'])
+            self.app.save_preferences({'auto_upload': False})
+            self.import_one(categories={'1': [group(1000)]})
+            self.assertEqual(len(sent), 2)
+            self.app.upload('100000001', lambda _message: None)
+            self.assertEqual(sent[-1], '100000001')
+            self.assertEqual(len(sent), 3)
+
+    def test_failed_auto_upload_keeps_saved_records_and_failed_capture_never_uploads(self):
+        self.import_one()
+        self.app.offline = False
+        self.app.save_preferences({'auto_upload': True})
+        with patch.object(rem_upload, 'upload_file', side_effect=rem_upload.RemUploadError('network failed')) as send:
+            self.import_one(categories={'1': [group(300)]})
+            self.assertEqual(send.call_count, 1)
+            self.assertEqual(rem_upload.uploaded_uids(self.output), set())
+            archive = self.output/'100000001.json'
+            before = archive.read_bytes()
+            self.assertEqual(self.app.state()['summary']['pulls'], 4)
+            with patch.object(self.app, 'select_process', return_value=SimpleNamespace(name='xtlr.exe', pid=20)), \
+                 patch.object(service, 'extract_snapshot', side_effect=LookupError('UID not found')):
+                with self.assertRaises(LookupError):
+                    self.app.capture(20, lambda _message: None)
+            self.assertEqual(send.call_count, 1)
+            self.assertEqual(archive.read_bytes(), before)
 
     def test_manual_uid_cannot_relabel_owned_or_unclaimed_history(self):
         self.import_one()
@@ -276,7 +351,15 @@ class ProtocolTests(unittest.TestCase):
 
     def test_subprocess_stdout_is_only_utf8_protocol_and_has_no_qt_import(self):
         with tempfile.TemporaryDirectory() as directory:
-            process=subprocess.run([sys.executable,'-m','stellasora_toolkit.desktop_engine','--output',str(Path(directory)/'数据 空格'),'--app-root',directory,'--offline'],
+            bootstrap = '''import importlib.abc, runpy, sys
+class NoGuiRuntime(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in ('PySide6', 'PyQt6', 'PyQt5'):
+            raise ImportError('Desktop core must not load a GUI runtime: '+fullname)
+sys.meta_path.insert(0, NoGuiRuntime())
+runpy.run_module('stellasora_toolkit.desktop_engine', run_name='__main__')
+'''
+            process=subprocess.run([sys.executable,'-c',bootstrap,'--output',str(Path(directory)/'数据 空格'),'--app-root',directory,'--offline'],
                                    input='{"id":1,"method":"app.state"}\n{"id":2,"method":"app.shutdown"}\n',capture_output=True,text=True,encoding='utf-8',timeout=15)
             self.assertEqual(process.returncode,0,process.stderr)
             messages=[json.loads(line) for line in process.stdout.splitlines()]

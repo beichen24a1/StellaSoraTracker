@@ -4,7 +4,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from tools.pack_electron_local import build_zip
+from tools.pack_electron_local import build_zip, ROOT, CURRENT_NOTICES
 from stellasora_toolkit import app_updater, update_installer
 
 
@@ -21,7 +21,9 @@ class ElectronDistributionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);source=self.source(root)
             for name in ('exports/100000001.json','.desktop/Cookies','logs/private.log','accounts.json','uid.json','fortune.json',
-                         'stellasora_gacha_archive.json','accounts/default/private.json','account_sessions/10-1000.blocked'):
+                         'stellasora_gacha_archive.json','accounts/default/private.json','account_sessions/10-1000.blocked',
+                         'UID.JSON','100123456.json','crash.log','archive_layout.json','.storage.lock','updates/ready.json',
+                         'backups/private.json','ui_settings.json','rem_upload_endpoint.txt'):
                 path=source/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'private')
             target=root/'local.zip';result=build_zip(source,target)
             self.assertEqual(len(result['sha256']),64)
@@ -31,6 +33,27 @@ class ElectronDistributionTests(unittest.TestCase):
                 self.assertIn('StellaSoraGachaTool/resources/engine/StellaSoraEngine.exe',names)
                 self.assertIn('StellaSoraGachaTool/THIRD_PARTY_NOTICES.txt',names)
                 self.assertIn('StellaSoraGachaTool/启动器.exe',names)
+
+    def test_zip_uses_current_notices_instead_of_stale_build_copies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);source=self.source(root)
+            for name in CURRENT_NOTICES:
+                (source/name).write_text('stale build notice', encoding='utf-8')
+            target=root/'local.zip';build_zip(source,target)
+            with zipfile.ZipFile(target) as archive:
+                for name in CURRENT_NOTICES:
+                    self.assertEqual(archive.read('StellaSoraGachaTool/'+name), (ROOT/name).read_bytes())
+
+    def test_disk_error_preserves_previous_zip_and_checksum(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);source=self.source(root)
+            target=root/'local.zip';target.write_bytes(b'previous zip')
+            checksum=target.with_suffix('.sha256');checksum.write_bytes(b'previous checksum')
+            with patch.object(zipfile.ZipFile,'write',side_effect=OSError('disk full')):
+                with self.assertRaises(OSError):build_zip(source,target)
+            self.assertEqual(target.read_bytes(),b'previous zip')
+            self.assertEqual(checksum.read_bytes(),b'previous checksum')
+            self.assertEqual(list(root.glob('*.part')),[])
 
     def test_qt_runtime_causes_packaging_failure_and_preserves_previous_zip(self):
         with tempfile.TemporaryDirectory() as directory:

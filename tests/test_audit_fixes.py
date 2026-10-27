@@ -203,24 +203,22 @@ class CatalogRegressions(unittest.TestCase):
 
 class ResultLabelRegressions(unittest.TestCase):
     def test_only_limited_pools_with_up_metadata_get_up_or_off_banner(self):
-        from PySide6.QtWidgets import QApplication, QTableWidget
-        from stellasora_toolkit.ui.window import StellaSoraApp
-        app = QApplication.instance() or QApplication([])
+        from stellasora_toolkit.application import Application
         with tempfile.TemporaryDirectory() as directory:
-            window = StellaSoraApp(Path(directory), demo=True, online_sync=False)
-            window.records.all_pulls = True
-            window.records.current = 'all'
+            root = Path(directory)
+            app = Application(root, offline=True)
             metadata = {
                 1001: ('周年特选', '', '', ''), 1: ('常驻', '', '', ''),
                 10162: ('旅人限时', '', '', catalog.gacha_item_name(162)),
                 20162: ('秘纹限时', '', '', catalog.gacha_item_name(214066)),
             }
-            with patch('stellasora_toolkit.ui.beta_views.official_pool_info', side_effect=metadata.get):
-                window.records.render([group(100, gid=1001), group(200, gid=1),
-                                       group(300, gid=10162), group(400, gid=20162, item=214015)])
-            table = window.records.findChild(QTableWidget)
-            results = {table.item(row, 3).text(): table.item(row, 4).text() for row in range(table.rowCount())}
+            source = root/'incoming.json'
+            source.write_text(json.dumps({'uid': UID, 'categories': {
+                '6': [group(100, gid=1001)], '2': [group(200, gid=1)],
+                '1': [group(300, gid=10162)], '3': [group(400, gid=20162, item=214015)],
+            }}), encoding='utf-8')
+            app.import_files([str(source)], lambda _message: None)
+            with patch.object(official_banners, 'official_pool_info', side_effect=metadata.get):
+                rows = app.query_records({'mode': 'all'})['items']
+            results = {row['poolName']: row['result'] for row in rows}
             self.assertEqual(results, {'周年特选': '—', '常驻': '—', '旅人限时': 'UP', '秘纹限时': '歪'})
-            window.close()
-            window.deleteLater()
-            app.processEvents()

@@ -1,4 +1,4 @@
-"""应用级共享常量:卡池类别、官方限时池信息、池色、版本号。"""
+"""应用级共享常量:卡池类别、官方限时池信息、版本号。"""
 from __future__ import annotations
 
 APP_VERSION = "1.3.3.bata1"
@@ -29,8 +29,6 @@ GACHA_CATEGORY_PITY_LIMITS = {
     CATEGORY_TRAVELER_STANDARD: 160,
     CATEGORY_DISC_STANDARD: 120,
 }
-
-POOL_COLORS = ("#5c7a9e", "#4b8e93", "#7b6fa3", "#a8826c")
 
 # 官方限时池信息:gid -> (名称, 开始, 结束, UP 名)
 OFFICIAL_LIMITED_POOL_INFO = {

@@ -16,8 +16,7 @@ stellasora-export = "stellasora_toolkit.cli:main"
 stellasora-toolkit = "stellasora_toolkit.desktop_launcher:main"
 
 [project.optional-dependencies]
-legacy-ui = ["PySide6>=6.8"]
-dev = ["PySide6>=6.8", "PyInstaller>=6"]
+dev = ["PyInstaller>=6"]
 
 [tool.setuptools.packages.find]
 include = ["stellasora_toolkit*"]

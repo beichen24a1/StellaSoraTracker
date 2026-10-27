@@ -1,0 +1,112 @@
+{
+  "baseline": "be0376f",
+  "date": "2026-10-27",
+  "removedPaths": [
+    "StellaSoraGachaTool.spec",
+    "build_qt_legacy.ps1",
+    "docs/releases/v1.3.2.md",
+    "docs/releases/v1.3.3.bata1.md",
+    "installer/StellaSoraGachaTool.iss",
+    "launcher_github.py",
+    "launcher_qt_legacy.py",
+    "run_qt_legacy.ps1",
+    "start_admin.bat",
+    "stellasora_toolkit/gui.py",
+    "stellasora_toolkit/ui/__init__.py",
+    "stellasora_toolkit/ui/automation.py",
+    "stellasora_toolkit/ui/beta_model.py",
+    "stellasora_toolkit/ui/beta_styles.py",
+    "stellasora_toolkit/ui/beta_views.py",
+    "stellasora_toolkit/ui/constants.py",
+    "stellasora_toolkit/ui/controller.py",
+    "stellasora_toolkit/ui/icons.py",
+    "stellasora_toolkit/ui/preferences.py",
+    "stellasora_toolkit/ui/theme.py",
+    "stellasora_toolkit/ui/views.py",
+    "stellasora_toolkit/ui/widgets.py",
+    "stellasora_toolkit/ui/window.py",
+    "tests/test_admin.py",
+    "tests/test_automation.py",
+    "tests/test_button_callbacks.py",
+    "tests/test_drop_import.py",
+    "tests/test_feature_parity.py",
+    "tests/test_gui.py",
+    "tests/test_pack_release.py",
+    "tests/test_settings_view.py",
+    "tests/test_theme.py",
+    "tests/test_theme_preferences.py",
+    "tests/test_ui_beta.py",
+    "tests/test_ui_lifecycle.py",
+    "tools/pack_release.py",
+    "tools/package_web_preview.py",
+    "tools/render_ui_betas.py",
+    "tools/trim_bundle.py",
+    "tools/volume_keeper.py",
+    "ui-beta/comparison.png",
+    "ui-beta/index.html",
+    "ui-beta/preview-server-error.log",
+    "ui-beta/preview-server.log",
+    "ui-beta/screenshots/journal-compact.png",
+    "ui-beta/screenshots/journal-home.png",
+    "ui-beta/screenshots/journal-records.png",
+    "ui-beta/screenshots/journal-settings.png",
+    "ui-beta/screenshots/orbit-compact.png",
+    "ui-beta/screenshots/orbit-home.png",
+    "ui-beta/screenshots/orbit-records.png",
+    "ui-beta/screenshots/orbit-settings.png",
+    "ui-beta/screenshots/sky-compact.png",
+    "ui-beta/screenshots/sky-home.png",
+    "ui-beta/screenshots/sky-records.png",
+    "ui-beta/screenshots/sky-settings.png"
+  ],
+  "moved": {
+    "stellasora_toolkit/ui/constants.py": "stellasora_toolkit/constants.py"
+  },
+  "retiredFeatures": [
+    "Qt 窗口及三套主题",
+    "今日运势与主观评级",
+    "Qt 截图/HTML 预览生成",
+    "旧 Qt 打包与 Inno 安装包入口",
+    "独立音量常驻工具",
+    "未使用的 zod 与旧记录网格样式"
+  ],
+  "retained": [
+    "Electron 六页界面和 Python CLI",
+    "好感度、普通启动器及按需提权",
+    "UID 校验、账号隔离、归档迁移与写档锁",
+    "JSON/CSV、GB18030、上传和绑定",
+    "白黑主题与旧偏好映射",
+    "资源维护和实机诊断工具",
+    "更新兼容、权限修复和失败回滚",
+    "MIT、来源署名与历史提交"
+  ],
+  "regressionsMigrated": {
+    "test_audit_fixes.ResultLabelRegressions": "Application.records.query",
+    "tests/test_reviewed_integration.py": "core capture/UID cases retained; widget cases moved to Application and current CLI",
+    "tests/test_theme_preferences.py": "test_desktop_application preference preservation/failure cases",
+    "tests/test_automation.py": "test_download_cancellation and test_desktop_application automatic upload cases",
+    "tests/test_pack_release.py": "test_electron_distribution current notices/privacy/atomic failure cases",
+    "tests/test_ui_beta.py": "test_presentation and existing Electron workflows"
+  },
+  "verification": {
+    "python": 481,
+    "vue": 11,
+    "electronFlows": 5,
+    "noQtRuntimeRequired": true,
+    "newReleaseCreated": false,
+    "versionChanged": false
+  },
+  "releaseCleanup": {
+    "authorizedTargets": [
+      "v1.3.2",
+      "v1.3.3.bata1"
+    ],
+    "retained": [
+      "v1.3.0",
+      "v1.3.0.bata1",
+      "v1.3.0.bata2"
+    ],
+    "feedsRestoredFrom": "v1.3.0.bata2",
+    "order": "verify retained assets, merge feed repair, then remove retired tags/releases"
+  }
+}

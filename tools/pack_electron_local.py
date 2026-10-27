@@ -12,6 +12,7 @@ OUT = ROOT/'release/StellaSoraGachaTool-Electron-local-win64.zip'
 PRIVATE = {'exports', '.desktop', 'accounts', 'account_sessions', 'logs', 'updates', 'backups', '__pycache__'}
 PRIVATE_NAMES = {'ui_settings.json','accounts.json','account.json','rem_upload_state.json','rem_upload_endpoint.txt',
                  'uid.json','fortune.json','server.json','archive_layout.json','stellasora_gacha_archive.json','.storage.lock','crash.log'}
+CURRENT_NOTICES = ('LICENSE', 'README.md')
 
 
 def build_zip(source=SOURCE, target=OUT):
@@ -30,10 +31,14 @@ def build_zip(source=SOURCE, target=OUT):
             for path in sorted(source.rglob('*')):
                 if not path.is_file(): continue
                 relative = path.relative_to(source)
+                if len(relative.parts) == 1 and path.name.casefold() in {name.casefold() for name in CURRENT_NOTICES}:
+                    continue
                 if PRIVATE.intersection(part.casefold() for part in relative.parts): continue
                 if path.name.casefold() in PRIVATE_NAMES: continue
                 if path.suffix.lower()=='.json' and path.stem.isdecimal(): continue
                 archive.write(path, 'StellaSoraGachaTool/'+relative.as_posix())
+            for name in CURRENT_NOTICES:
+                archive.write(ROOT/name, 'StellaSoraGachaTool/'+name)
         with zipfile.ZipFile(temporary) as archive:
             if archive.testzip(): raise ValueError('ZIP CRC check failed')
             names=archive.namelist()
