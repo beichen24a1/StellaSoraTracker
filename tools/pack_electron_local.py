@@ -19,7 +19,7 @@ def build_zip(source=SOURCE, target=OUT):
     source, target = Path(source), Path(target)
     if not (source/'StellaSoraGachaTool.exe').is_file():
         raise ValueError('Build the Electron application first')
-    for name in ('resources/app.asar','resources/engine/StellaSoraEngine.exe','StellaSoraUpdater.exe','启动器.exe',
+    for name in ('resources/app.asar','resources/engine/StellaSoraEngine.exe','StellaSoraUpdater.exe',
                  'LICENSE','README.md','THIRD_PARTY_NOTICES.txt','LICENSE.electron.txt','LICENSES.chromium.html'):
         if not (source/name).is_file():
             raise ValueError(f'Missing distribution file: {name}')

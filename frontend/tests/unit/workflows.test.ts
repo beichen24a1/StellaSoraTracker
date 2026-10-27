@@ -23,7 +23,7 @@ beforeEach(() => {
     if(method==='preferences.save')return {...useAppStore().state!.preferences,...params}
     return {ok:true}
   })
-  window.stella={request,onEvent:()=>()=>{},importFiles:vi.fn()}
+  window.stella={request,onEvent:()=>()=>{}}
   useAppStore().state=state()
 })
 afterEach(() => { for(const wrapper of wrappers)wrapper.unmount(); document.body.innerHTML='' })

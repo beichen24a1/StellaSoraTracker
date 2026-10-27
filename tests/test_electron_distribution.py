@@ -11,7 +11,7 @@ from stellasora_toolkit import app_updater, update_installer
 class ElectronDistributionTests(unittest.TestCase):
     def source(self, root):
         source=root/'source';source.mkdir()
-        for name in ('StellaSoraGachaTool.exe','StellaSoraUpdater.exe','启动器.exe','resources/app.asar',
+        for name in ('StellaSoraGachaTool.exe','StellaSoraUpdater.exe','resources/app.asar',
                      'resources/engine/StellaSoraEngine.exe','LICENSE','README.md','THIRD_PARTY_NOTICES.txt',
                      'LICENSE.electron.txt','LICENSES.chromium.html'):
             path=source/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'fixture')
@@ -29,10 +29,9 @@ class ElectronDistributionTests(unittest.TestCase):
             self.assertEqual(len(result['sha256']),64)
             with zipfile.ZipFile(target) as archive:
                 names=archive.namelist()
-                self.assertEqual(len(names),10)
+                self.assertEqual(len(names),9)
                 self.assertIn('StellaSoraGachaTool/resources/engine/StellaSoraEngine.exe',names)
                 self.assertIn('StellaSoraGachaTool/THIRD_PARTY_NOTICES.txt',names)
-                self.assertIn('StellaSoraGachaTool/启动器.exe',names)
 
     def test_zip_uses_current_notices_instead_of_stale_build_copies(self):
         with tempfile.TemporaryDirectory() as directory:

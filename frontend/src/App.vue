@@ -25,17 +25,11 @@ const config = computed(() => ({ algorithm: store.colorMode === 'dark' ? theme.d
     borderRadius: 9, fontFamily: '"Segoe UI", "Microsoft YaHei UI", sans-serif' } }))
 onMounted(() => void store.initialize())
 onUnmounted(() => store.dispose())
-async function drop(event: DragEvent) {
-  if (store.busy) return
-  const files = Array.from(event.dataTransfer?.files || [])
-  const selected = await window.stella.importFiles(files)
-  await store.importFiles(selected)
-}
 </script>
 
 <template>
   <a-config-provider :theme="config">
-    <div class="desktop" @dragover.prevent @drop.prevent="drop">
+    <div class="desktop">
       <aside class="sidebar">
         <div class="brand"><img :src="'app://assets/app_icon.png'" alt="星塔旅人"><div><strong>STELLA SORA</strong><small>星塔旅人 · 招募档案</small></div></div>
         <div class="nav-caption">我的档案</div>
@@ -45,7 +39,7 @@ async function drop(event: DragEvent) {
       </aside>
       <div class="main-shell">
         <header class="topbar"><div><strong>招募记录工具</strong><div class="topbar-sub">{{ store.state?.servers.find(s => s.key === store.state?.server)?.label || '正在连接' }} · 本地归档与卡池统计</div></div>
-          <div class="top-actions"><a-button class="import-button" :disabled="store.busy" @click="store.importFiles()"><ImportOutlined aria-hidden="true"/> 导入文件<span>或拖到这里</span></a-button><a-button type="primary" :loading="store.busy" @click="store.capture()"><ReloadOutlined v-if="!store.busy"/>抓取抽卡记录</a-button></div>
+          <div class="top-actions"><a-button class="import-button" :disabled="store.busy" @click="store.importFiles()"><ImportOutlined aria-hidden="true"/> 导入文件</a-button><a-button type="primary" :loading="store.busy" @click="store.capture()"><ReloadOutlined v-if="!store.busy"/>抓取抽卡记录</a-button></div>
         </header>
         <a-alert v-if="store.error" type="error" show-icon :message="store.error" class="connection-error"><template #action><a-button size="small" @click="store.invoke('engine.reconnect').then(() => store.refresh())">重新连接</a-button></template></a-alert>
         <main class="page-area"><a-spin :spinning="store.loading"><router-view v-slot="{ Component, route: pageRoute }"><Transition name="page" mode="out-in" appear><component :is="Component" :key="pageRoute.path"/></Transition></router-view></a-spin></main>

@@ -42,10 +42,6 @@
         "to": "StellaSoraUpdater.exe"
       },
       {
-        "from": "../dist/启动器.exe",
-        "to": "启动器.exe"
-      },
-      {
         "from": "../LICENSE",
         "to": "LICENSE"
       },
@@ -60,7 +56,7 @@
     ],
     "win": {
       "icon": "../assets/app_icon.ico",
-      "requestedExecutionLevel": "asInvoker",
+      "requestedExecutionLevel": "requireAdministrator",
       "signAndEditExecutable": true
     },
     "electronDist": "node_modules/electron/dist"

@@ -13,5 +13,5 @@ export interface QueryResult { items: (RecordRow | Pool)[]; total: number; page:
 export interface EngineEvent { type: 'event'; name: string; payload: any }
 export interface ImportFile { token: string; name: string }
 export interface AffinityEntry { id: number; name: string; level: number; exp: number; need: number; ratio: number; favorite: boolean }
-export interface DesktopAPI { request<T=any>(method: string, params?: Record<string, unknown>): Promise<T>; importFiles(files: File[]): Promise<ImportFile[]>; onEvent(callback: (event: EngineEvent) => void): () => void }
+export interface DesktopAPI { request<T=any>(method: string, params?: Record<string, unknown>): Promise<T>; onEvent(callback: (event: EngineEvent) => void): () => void }
 declare global { interface Window { stella: DesktopAPI } }

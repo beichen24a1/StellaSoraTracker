@@ -21,8 +21,6 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Python engine build failed' }
             & $python -m PyInstaller --noconfirm --clean StellaSoraUpdater.spec
             if ($LASTEXITCODE -ne 0) { throw 'Updater build failed' }
-            & $python -m PyInstaller --noconfirm --clean StellaSoraLauncher.spec
-            if ($LASTEXITCODE -ne 0) { throw 'Launcher build failed' }
         } finally { $env:PATH = $originalPath }
     }
     & $python tools/write_third_party_notices.py

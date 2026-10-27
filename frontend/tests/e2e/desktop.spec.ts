@@ -74,13 +74,7 @@ test('real Python engine, all five pages, two themes and account safety', async 
     await page.getByRole('button',{name:'确认删除',exact:true}).click()
     await expect.poll(()=>fs.existsSync(path.join(output,'100000002.json'))).toBe(false)
     expect(fs.readdirSync(path.join(output,'accounts')).some(name=>name.includes('.deleted_'))).toBe(true)
-    const dropped=path.join(fixture,'拖放记录.json')
-    fs.writeFileSync(dropped,JSON.stringify({uid,categories:{'1':[{Gid:10162,Time:1792900000,Ids:[103,103]}]}}))
-    await page.evaluate(()=>{const input=document.createElement('input');input.type='file';input.id='test-native-file';document.body.append(input)})
-    await page.locator('#test-native-file').setInputFiles(dropped)
-    await page.evaluate(()=>{const input=document.querySelector<HTMLInputElement>('#test-native-file')!;const data=new DataTransfer();for(const file of input.files!)data.items.add(file);document.querySelector('.desktop')!.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:data}));input.remove()})
-    await expect.poll(async()=> (await page.evaluate(()=>window.stella.request('app.state'))).summary.pulls).toBe(10)
-    await expect.poll(()=>fs.readdirSync(path.join(output,'backups')).length).toBeGreaterThan(1)
+    await expect.poll(()=>fs.readdirSync(path.join(output,'backups')).length).toBeGreaterThan(0)
     await expect.poll(async()=> (await page.evaluate(()=>window.stella.request('app.state'))).busy).toBe(false)
     const beforeRestart=fs.readFileSync(path.join(output,`${uid}.json`),'utf8')
     const enginePid=await desktop.evaluate(()=>{
@@ -92,7 +86,7 @@ test('real Python engine, all five pages, two themes and account safety', async 
     await expect(page.getByRole('button',{name:'重新连接',exact:true})).toBeVisible()
     await page.getByRole('button',{name:'重新连接',exact:true}).click()
     await expect(page.locator('.connection-error')).toHaveCount(0)
-    expect((await page.evaluate(()=>window.stella.request('app.state'))).summary.pulls).toBe(10)
+    expect((await page.evaluate(()=>window.stella.request('app.state'))).summary.pulls).toBe(8)
     expect(fs.readFileSync(path.join(output,`${uid}.json`),'utf8')).toBe(beforeRestart)
     expect(errors).toEqual([])
   } finally { await desktop.close() }
