@@ -10,8 +10,10 @@
 ``NeedExp`` / ``AffinityLevel``。这里按同样的形状构造。
 """
 import json
+import os
 import struct
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -227,12 +229,19 @@ class AffinityCacheTests(unittest.TestCase):
         self.assertIsNone(load_cache(self.directory / "100000001_affinity.json"))
 
     def test_latest_cache_returns_newest_file(self):
+        older = self.directory / "100000001_affinity.json"
+        newer = self.directory / "100000002_affinity.json"
         save_cache(self.directory, "100000001", [Affinity(id=156, name="小禾", level=65, exp=0, need=33100)])
         save_cache(self.directory, "100000002", [Affinity(id=103, name="琥珀", level=4, exp=0, need=500)])
+        # 同一秒内写入时分不出先后, 用显式时间戳让结果确定
+        now = time.time()
+        os.utime(older, (now - 10, now - 10))
+        os.utime(newer, (now, now))
+
         newest = latest_cache(self.directory)
         self.assertIsNotNone(newest)
         path, payload = newest
-        self.assertTrue(path.name in {"100000001_affinity.json", "100000002_affinity.json"})
+        self.assertEqual(path.name, "100000002_affinity.json")
         self.assertEqual(payload["entries"][0]["level"], 4)
 
     def test_missing_or_broken_file_returns_none(self):
