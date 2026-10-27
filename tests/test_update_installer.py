@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -155,6 +157,12 @@ class UpdateInstallerTests(unittest.TestCase):
 
 
 class AclDecisionTests(unittest.TestCase):
+    def test_read_and_execute_grants_can_be_split_across_matching_aces(self):
+        aces = [
+            (update_installer._ACCESS_ALLOWED_ACE_TYPE, USER_SID, update_installer._READ_RIGHTS),
+            (update_installer._ACCESS_ALLOWED_ACE_TYPE, USERS_SID, update_installer._FILE_EXECUTE),
+        ]
+        self.assertTrue(acl_grants({USER_SID, USERS_SID}, update_installer._EXECUTE_RIGHTS, aces))
     def test_read_execute_allow_for_the_user_is_accepted(self):
         aces = [(update_installer._ACCESS_ALLOWED_ACE_TYPE, USER_SID, GENERIC_READ_EXECUTE)]
         self.assertTrue(acl_grants({USER_SID}, update_installer._EXECUTE_RIGHTS, aces))
@@ -189,8 +197,19 @@ class AclDecisionTests(unittest.TestCase):
         self.assertFalse(acl_grants({USER_SID}, update_installer._EXECUTE_RIGHTS, aces))
         self.assertTrue(acl_grants({USER_SID}, update_installer._FILE_READ_DATA, aces))
 
+    def test_read_execute_requires_read_control_and_extended_attributes(self):
+        for missing in (0x00020000, 0x0008):
+            with self.subTest(missing=missing):
+                aces = [(update_installer._ACCESS_ALLOWED_ACE_TYPE, USER_SID, GENERIC_READ_EXECUTE & ~missing)]
+                self.assertFalse(acl_grants({USER_SID}, update_installer._EXECUTE_RIGHTS, aces))
+
 
 class PlainUserProbeTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
+    def test_empty_dacl_is_blocked_instead_of_treated_as_unknown(self):
+        with patch('stellasora_toolkit.update_installer._file_security', return_value=(USER_SID, [])), \
+             patch('stellasora_toolkit.update_installer._current_user_sid', return_value=USER_SID):
+            self.assertIs(plain_user_can_use(Path('whatever'), execute=True), False)
     @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
     def test_missing_security_descriptor_is_reported_as_unknown(self):
         with patch("stellasora_toolkit.update_installer._file_security", side_effect=OSError("denied")):
@@ -244,6 +263,122 @@ class VerificationTests(unittest.TestCase):
                 patch.object(Path, "open", side_effect=PermissionError("denied")):
             with self.assertRaisesRegex(RuntimeError, "无法读取"):
                 verify_installation(self.target, [payload])
+
+    def test_checks_launcher_as_well_as_main_executable(self):
+        launcher = self.target/'启动器.exe'; launcher.write_bytes(b'launcher')
+        with patch('stellasora_toolkit.update_installer.plain_user_can_use',
+                   side_effect=lambda path, **_kwargs: path != launcher):
+            with self.assertRaisesRegex(RuntimeError, '启动器.exe'):
+                verify_installation(self.target, [self.executable, launcher])
+
+    def test_checks_runtime_dependencies_as_an_ordinary_user(self):
+        directory = self.target/'resources'; directory.mkdir()
+        dependency = directory/'engine.dll'; dependency.write_bytes(b'dependency')
+        with patch('stellasora_toolkit.update_installer.plain_user_can_use',
+                   side_effect=lambda path, **_kwargs: path != dependency):
+            with self.assertRaisesRegex(RuntimeError, 'engine.dll'):
+                verify_installation(self.target, [self.executable, directory])
+
+    def test_checks_program_directory_access_before_accepting_update(self):
+        with patch('stellasora_toolkit.update_installer.plain_user_can_use',
+                   side_effect=lambda path, **_kwargs: path != self.target):
+            with self.assertRaisesRegex(RuntimeError, '新文件夹'):
+                verify_installation(self.target, [self.executable])
+
+
+class RestartRollbackTests(unittest.TestCase):
+    def test_missing_backup_does_not_delete_current_program(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root/'app'; target.mkdir()
+            executable = target/APP_EXE_NAME; executable.write_bytes(b'current program')
+            work = root/'work'; work.mkdir()
+            (work/'backup').mkdir()
+            (work/'installed.json').write_text(json.dumps({
+                'target':str(target.resolve()), 'entries':[APP_EXE_NAME], 'replaced':[APP_EXE_NAME],
+            }), encoding='utf-8')
+            with self.assertRaisesRegex(RuntimeError, '备份不完整'):
+                update_installer.rollback_completed_update(work, target)
+            self.assertEqual(executable.read_bytes(), b'current program')
+
+    def test_invalid_rollback_record_cannot_remove_user_data(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root/'app'; target.mkdir()
+            (target/'exports').mkdir()
+            archive = target/'exports/history.json'; archive.write_bytes(b'private records')
+            work = root/'work'; work.mkdir()
+            for name in ('exports', '.desktop', '..', '../outside'):
+                (work/'installed.json').write_text(json.dumps({'target':str(target.resolve()),'entries':[name]}), encoding='utf-8')
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    update_installer.rollback_completed_update(work, target)
+                self.assertEqual(archive.read_bytes(), b'private records')
+
+    def test_access_denied_on_restart_restores_program_and_keeps_download_and_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root/'app'; target.mkdir()
+            (target/APP_EXE_NAME).write_bytes(b'old program')
+            (target/'启动器.exe').write_bytes(b'old launcher')
+            (target/'exports').mkdir()
+            (target/'exports/history.json').write_bytes(b'private records')
+            package = root/'update.zip'
+            with zipfile.ZipFile(package, 'w') as archive:
+                for name, content in {APP_EXE_NAME:b'new program', '启动器.exe':b'new launcher', 'extra.dll':b'new'}.items():
+                    archive.writestr('StellaSoraGachaTool/'+name, content)
+            with patch.object(update_installer, 'plain_user_can_use', return_value=True), \
+                 patch.object(update_installer, 'prune_stale_directories', return_value=[]), \
+                 patch.object(update_installer, 'wait_for_process_exit'), \
+                 patch.object(update_installer, 'restart_application', side_effect=PermissionError('access denied')), \
+                 patch.object(update_installer, 'show_error') as error:
+                code = update_installer.main(['--package', str(package), '--target-dir', str(target), '--parent-pid', '10'])
+            self.assertEqual(code, 1)
+            error.assert_called_once()
+            self.assertEqual((target/APP_EXE_NAME).read_bytes(), b'old program')
+            self.assertEqual((target/'启动器.exe').read_bytes(), b'old launcher')
+            self.assertFalse((target/'extra.dll').exists())
+            self.assertEqual((target/'exports/history.json').read_bytes(), b'private records')
+            self.assertTrue(package.exists())
+
+
+@unittest.skipUnless(os.name == 'nt', 'Real Windows execute ACL regression')
+class WindowsLaunchPermissionTests(unittest.TestCase):
+    def test_copied_program_starts_when_legacy_moved_program_is_denied(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root/'source.exe'
+            source.write_bytes((Path(os.environ['SystemRoot'])/'System32/cmd.exe').read_bytes())
+            target = root/'app'; target.mkdir()
+            quote = lambda value: str(value).replace("'", "''")
+            script = f'''
+$ErrorActionPreference = 'Stop'
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+$acl = Get-Acl -LiteralPath '{quote(source)}'
+$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid, [Security.AccessControl.FileSystemRights]::ExecuteFile, [Security.AccessControl.AccessControlType]::Deny))
+Set-Acl -LiteralPath '{quote(source)}' -AclObject $acl
+$folder = Get-Acl -LiteralPath '{quote(target)}'
+$folder.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid, [Security.AccessControl.FileSystemRights]::FullControl, [Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit', [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow))
+Set-Acl -LiteralPath '{quote(target)}' -AclObject $folder
+'''
+            setup = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script],
+                                   capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW,
+                                   env={key:value for key,value in os.environ.items() if key.casefold() != 'psmodulepath'})
+            self.assertEqual(setup.returncode, 0, setup.stderr.decode('utf-8', errors='replace'))
+            legacy = root/'legacy-moved.exe'
+            shutil.move(source, legacy)
+            with self.assertRaises(PermissionError):
+                subprocess.run([str(legacy), '/d', '/c', 'exit', '0'], check=True,
+                               capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            executable = target/APP_EXE_NAME
+            launcher = target/'启动器.exe'
+            update_installer._install_entry(legacy, executable)
+            update_installer._install_entry(legacy, launcher)
+            verify_installation(target, [executable, launcher])
+            result = subprocess.run([str(launcher), '/d', '/c', 'exit', '0'], capture_output=True,
+                                    timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertEqual(result.returncode, 0)
 
 
 @unittest.skipUnless(os.name == 'nt', 'temp cleanup only runs on Windows')
