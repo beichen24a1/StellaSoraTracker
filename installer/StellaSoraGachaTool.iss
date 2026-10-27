@@ -1,6 +1,7 @@
 #define MyAppName "星塔旅人数据工具"
 #define MyAppVersion "1.3.1"
 #define MyAppExeName "StellaSoraGachaTool.exe"
+#define MyLauncherName "启动器.exe"
 
 #ifndef MySourceDir
   #define MySourceDir "..\release\github\StellaSoraGachaTool"
@@ -45,5 +46,6 @@ Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdir
 Root: HKCU; Subkey: "Software\StellaSoraGachaTool"; ValueType: string; ValueName: "InstallLocation"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+; 普通模式启动器：不请求管理员权限，读取游戏时由客户端按需提权重启
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyLauncherName}"; WorkingDir: "{app}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyLauncherName}"; WorkingDir: "{app}"; Tasks: desktopicon

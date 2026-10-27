@@ -60,7 +60,11 @@ class EngineClient extends EventEmitter {
           const pending = this.pending.get(value.id)
           if (!pending) return
           this.pending.delete(value.id); clearTimeout(pending.timer)
-          if (value.error) pending.reject(new Error(value.error.message))
+          if (value.error) {
+            // Keep the engine's error code so the renderer and the elevation
+            // prompt can tell "needs an administrator" apart from other failures.
+            pending.reject(Object.assign(new Error(String(value.error.message)), { code: value.error.code }))
+          }
           else pending.resolve(value.result)
         } else if (value.type === 'event') {
           this.emit('event', value)
@@ -110,7 +114,7 @@ function trustedSender(event: Electron.IpcMainInvokeEvent) {
   if (!address.startsWith('app://ui/') && !(devUrl && new URL(address).origin === new URL(devUrl).origin)) throw new Error('不受信任的页面')
 }
 
-ipcMain.handle('stella:request', async (event, method: unknown, raw: unknown) => {
+async function handleRequest(event: Electron.IpcMainInvokeEvent, method: unknown, raw: unknown) {
   trustedSender(event)
   if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','engine.reconnect','app.loaded'].includes(method))) throw new Error('不支持的操作')
   if (raw !== undefined && (raw === null || Array.isArray(raw) || typeof raw !== 'object')) throw new Error('参数无效')
@@ -169,6 +173,56 @@ ipcMain.handle('stella:request', async (event, method: unknown, raw: unknown) =>
   const result = await engine.request(method, params)
   if (method === 'preferences.save' && params.color_mode) nativeTheme.themeSource = params.color_mode === 'dark' ? 'dark' : 'light'
   return result
+}
+
+// The packaged client starts without an administrator token (see launcher_client.py).
+// Reading the game needs one, so the engine answers with AdminRequired and the user
+// gets a single UAC prompt to continue in an elevated window.
+function adminRequired(error: unknown) {
+  return (error as { code?: unknown })?.code === 'AdminRequired'
+}
+
+function launchElevatedClient() {
+  const quote = (value: string) => value.replace(/'/g, "''")
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `Wait-Process -Id ${process.pid} -ErrorAction SilentlyContinue`,
+    `Start-Process -FilePath '${quote(process.execPath)}' -WorkingDirectory '${quote(appRoot)}' -Verb RunAs`,
+  ].join('; ')
+  const encoded = Buffer.from(script, 'utf16le').toString('base64')
+  spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded], {
+    detached: true, stdio: 'ignore', windowsHide: true,
+  }).unref()
+}
+
+async function offerElevation() {
+  const target = window
+  if (!target || target.isDestroyed()) return false
+  const answer = await dialog.showMessageBox(target, {
+    type: 'question',
+    buttons: ['以管理员身份重启', '取消'],
+    defaultId: 0,
+    cancelId: 1,
+    message: '读取游戏内存需要管理员权限',
+    detail: '普通模式不能读取游戏。确认后会弹出一次系统授权，工具将以管理员身份重新启动，重启后请再点一次刚才的操作。',
+  })
+  if (answer.response !== 0) return false
+  launchElevatedClient()
+  quitting = true
+  app.releaseSingleInstanceLock()
+  engine.child?.stdin.end()
+  setTimeout(() => app.quit(), 100)
+  return true
+}
+
+ipcMain.handle('stella:request', async (event, method: unknown, raw: unknown) => {
+  try {
+    return await handleRequest(event, method, raw)
+  } catch (error) {
+    if (!adminRequired(error)) throw error
+    if (!(await offerElevation())) throw new Error('已取消以管理员身份重启，读取游戏需要管理员权限')
+    return { elevating: true }
+  }
 })
 
 ipcMain.handle('stella:drop', (event, files: unknown) => {

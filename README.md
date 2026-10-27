@@ -26,9 +26,19 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 开发环境需要 Node.js 22.12+、Python 3.10+；运行 `python -m pip install -e ".[dev]"` 后，用 `./run.ps1` 构建并打开新客户端。首次会通过 `npm ci` 安装前端依赖；旧 Qt 对照入口为 `./run_qt_legacy.ps1`。渲染器热更新可另起 `frontend` 中的 `npm run dev`，通过 `VITE_DEV_SERVER_URL` 连接；正式程序只加载本地打包页面。
 
-本地验收构建：`./build_electron.ps1`（或 `./build_release.ps1`），输出 `release/StellaSoraGachaTool-Electron-local-win64.zip`，不会更新正式版本号、发布清单或 tag。包内自带 Python 核心和 Electron 运行时，**不需要用户安装 Python，也不携带 PySide6 界面运行库**。启动保留一次管理员授权，数据仍在程序旁的 `exports`。Qt 构建仅供开发对照：`./build_qt_legacy.ps1`。
+本地验收构建：`./build_electron.ps1`（或 `./build_release.ps1`），输出 `release/StellaSoraGachaTool-Electron-local-win64.zip`，不会更新正式版本号、发布清单或 tag。包内自带 Python 核心和 Electron 运行时，**不需要用户安装 Python，也不携带 PySide6 界面运行库**。主程序清单为 `asInvoker`：双击 `启动器.exe` 以普通模式启动，读取游戏时再按提示授权一次；数据仍在程序旁的 `exports`。Qt 构建仅供开发对照：`./build_qt_legacy.ps1`。
 
-验证命令：`./.venv/Scripts/python.exe tools/run_tests.py`；前端目录执行 `npm test`、`npm run test:e2e`。冻结包与中文路径验收工具为 `tools/verify_electron_package.py`，会复制包到独立目录；为自动化测试调整的权限清单只作用于一次性测试副本，不改变交付 ZIP 的管理员启动要求。
+验证命令：`./.venv/Scripts/python.exe tools/run_tests.py`；前端目录执行 `npm test`、`npm run test:e2e`。冻结包与中文路径验收工具为 `tools/verify_electron_package.py`，会复制包到独立目录，并校验客户端清单不强制提权、`启动器.exe` 随包提供。
+
+## 启动方式
+
+解压后双击 `启动器.exe`：
+
+- **普通模式（默认）**：不弹 UAC，浏览记录、导入/导出、备份、设置和同步资源直接可用。
+- **需要读游戏时**：点「抓取抽卡记录」「读取游戏 UID」或「读取好感度」会提示一次，确认后工具以管理员身份重新启动，重启后再点一次刚才的操作即可继续。
+- **直接管理员启动**：`启动器.exe --admin`，或右键「以管理员身份运行」。`StellaSoraGachaTool.exe` 也可以直接双击，等同普通模式。
+
+普通模式需要在程序目录写入 `exports` 和 `.desktop`，请把程序放在自己有写权限的目录（例如桌面或 `%LOCALAPPDATA%`），不要放在 `Program Files` 下。
 
 `1.3.0.bata2` 是首个 Electron 测试版；历史 `1.3.0.bata1` 保留为 Qt 客户端，原有发行资产不变。
 
@@ -67,7 +77,7 @@ Electron 版仅提供白色和黑色，主题在“数据与设置”切换并�
 
 三套主题的菜单均在左侧。主题、卡池列数和自动化偏好保存在输出目录的 `ui_settings.json`，账号切换不影响偏好。卡池详情可选择自动排布、一列、两列，并在重启后恢复。
 
-应用始终加载本地归档；公开命令行中的 `--demo`、`--beta` 和演示启动脚本已移除。测试工具内部可使用内存样例做离屏验证。读取游戏时仍需按原使用说明以管理员权限运行。
+应用始终加载本地归档；公开命令行中的 `--demo`、`--beta` 和演示启动脚本已移除。测试工具内部可使用内存样例做离屏验证。读取游戏时不需要一启动就带管理员权限：普通模式下按提示授权并重启一次即可。
 
 打开 [三套 UI 截图预览](ui-beta/index.html) 可切换查看首页、记录页、设置页和 960px 小窗口效果。截图由真实 Qt 控件渲染，使用演示记录。原生窗口支持卡池筛选、名称搜索、五星/全部记录切换、归档导入、JSON/CSV 导出、备份和更新检查。
 

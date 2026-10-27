@@ -9,7 +9,7 @@ import threading
 from dataclasses import asdict
 from pathlib import Path
 
-from . import server_config, service
+from . import admin, server_config, service
 from .application import Application, safe_message
 from .desktop_updates import DesktopUpdates
 from .process import find_game_processes
@@ -22,6 +22,16 @@ METHODS = frozenset({
     'resources.sync', 'upload.send', 'updates.check', 'updates.download', 'updates.cancel', 'updates.install',
 })
 
+# Reading the game process needs an administrator token. The packaged client
+# starts unelevated by default (see launcher_client.py), so these methods are
+# rejected until the user agrees to the elevation prompt.
+ADMIN_METHODS = frozenset({'records.capture', 'uid.read', 'affinity.read'})
+
+
+def administrator_required() -> bool:
+    """Whether this engine must refuse memory reads until it runs elevated."""
+    return getattr(sys, 'frozen', False) and not admin.is_administrator()
+
 
 class Engine:
     def __init__(self, output: Path, app_root: Path, emit, *, offline=False):
@@ -32,6 +42,8 @@ class Engine:
     def dispatch(self, method: str, params: dict):
         if method not in METHODS or not isinstance(params, dict):
             raise ValueError('不支持的请求')
+        if method in ADMIN_METHODS and administrator_required():
+            raise admin.AdminRequired('读取游戏需要管理员权限，请确认以管理员身份重启工具')
         app = self.app
         if method == 'app.state':
             return {**app.state(), 'update': self.updates.state, 'packaged': bool(getattr(sys, 'frozen', False))}

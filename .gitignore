@@ -9,6 +9,7 @@ dist/
 release/
 *.spec
 !StellaSoraUpdater.spec
+!StellaSoraLauncher.spec
 *.exe
 .gitee-token
 ui-beta/*.log
