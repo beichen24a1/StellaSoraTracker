@@ -40,16 +40,16 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 如果出现“Windows 无法访问指定设备、路径或文件”，先保留旧程序目录和整个 `exports`，将完整 ZIP 解压到一个有读写权限的**全新目录**，再复制旧 `exports`。旧更新器留下的权限问题可能随原目录保留，完整的新目录可避免继续继承这些权限。
 
-当前源码会使用校验后的下载包内更新器，检查程序目录和运行库对普通用户的访问权限；Windows 拒绝启动新程序时恢复旧文件并保留下载包。此修复随下一次明确发布的版本提供；已安装旧客户端首次迁移时建议完整解压到新目录。若仍被拒绝访问，请记录原版本、目标版本和更新方式，并保留 `%LOCALAPPDATA%/StellaSoraGachaTool/logs/updater.log` 供排查。
+从 b3 开始使用校验后的下载包内更新器，检查程序目录和运行库对普通用户的访问权限；Windows 拒绝启动新程序时恢复旧文件并保留下载包。更新完成后的临时清理失败只记日志，不再误报整次更新失败。已安装旧客户端仍可能先执行自己的旧更新器，首次迁移建议完整解压到新目录。若仍被拒绝访问，请记录原版本、目标版本和更新方式，并保留 `%LOCALAPPDATA%/StellaSoraGachaTool/logs/updater.log` 供排查。
 
 
 `1.3.0.bata2` 是首个 Electron 测试版；历史 `1.3.0.bata1` 保留为 Qt 客户端，原有发行资产不变。
 
 ### 已发布版本
 
-当前公开测试版为 [1.3.0.bata2](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata2)，下载 `StellaSoraGachaTool-1.3.0.bata2-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 EXE。[b2 更新说明](docs/releases/v1.3.0.bata2.md)、[b1 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata1) 和原有[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 分别保留。
+当前公开测试版为 [1.3.0.bata3](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata3)，下载 `StellaSoraGachaTool-1.3.0.bata3-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 EXE。[b3 更新说明](docs/releases/v1.3.0.bata3.md)、[b2 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata2)、[b1 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata1) 和原有[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 分别保留。
 
-已撤下 `1.3.2`、`1.3.3.bata1` 的公开发行入口；测试更新清单恢复到 b2，稳定更新清单恢复到原有稳定资产。当前源码仍保留后续加入的好感度与更新可靠性修复，本次清理没有重新发版；源码功能范围与历史下载包请分别查看。
+已撤下 `1.3.2`、`1.3.3.bata1` 的公开发行入口；好感度和更新可靠性修复已纳入 b3，测试更新清单指向 b3，稳定更新清单继续保留原有稳定资产。撤下版本的数字高于 `1.3.0.bata3`，使用这些版本的用户需要完整解压 b3 到新目录，再复制旧 `exports`，自动检查不会将较低数字识别为新版。
 
 发行形式继续只提供 Windows 免安装 ZIP，不另外提供安装向导版。
 
