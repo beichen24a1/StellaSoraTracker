@@ -4,6 +4,9 @@
 抽到它时界面显示 "物品 #137", 而且 is_five_star_item() 返回 False, 五星记录/概率/
 垫抽全部算错。139 艾蕾(带天井池 10139)同样是这个错。
 
+现在 assets/travelers 同时收四星头像(好感度页要显示所有已拥有角色), 所以校验分两层:
+有名字是硬要求; 五星标记只对五星角色成立, 四星不能被当成五星。
+
 这类"图片资源在、名称表不在"的错位必须能**离线**发现, 不能指望联网同步兜底,
 所以这里直接用随包资源与 tools/stellabase_cache 的官方快照做对齐校验。
 """
@@ -33,14 +36,24 @@ def png_ids(folder: str) -> list[int]:
 
 
 class BundledResourceTests(unittest.TestCase):
-    def test_every_bundled_traveler_icon_has_a_five_star_name(self):
+    def test_every_bundled_traveler_icon_has_a_name(self):
         for item_id in png_ids("travelers"):
             with self.subTest(item_id=item_id):
                 self.assertIn(item_id, TRAVELER_NAMES,
                               f"assets/travelers/{item_id}.png 没有名称, 抽到时只会显示 物品 #{item_id}")
-                self.assertIn(item_id, FIVE_STAR_TRAVELERS)
-                self.assertTrue(is_five_star_item(item_id))
-                self.assertEqual(gacha_item_kind(item_id), "traveler")
+                if item_id in FIVE_STAR_TRAVELERS:
+                    self.assertTrue(is_five_star_item(item_id))
+                    self.assertEqual(gacha_item_kind(item_id), "traveler")
+                else:
+                    # 四星头像也随包(好感度页要显示), 但不能被当成五星
+                    self.assertFalse(is_five_star_item(item_id))
+
+    def test_every_named_traveler_has_a_bundled_icon(self):
+        """名称表里的角色都要有头像, 否则好感度页/记录页只能显示首字占位。"""
+        icons = set(png_ids("travelers"))
+        for item_id, name in TRAVELER_NAMES.items():
+            with self.subTest(item_id=item_id, name=name):
+                self.assertIn(item_id, icons, f"{name}({item_id}) 缺少 assets/travelers/{item_id}.png")
 
     def test_every_bundled_disc_icon_has_a_name(self):
         for item_id in png_ids("discs"):

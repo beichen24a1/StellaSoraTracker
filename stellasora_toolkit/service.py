@@ -7,10 +7,10 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Iterable
 
-from . import accounts, server_config, archive_layout
-from .account_uid import UidSearch, find_account_uid
+from . import accounts, server_config, archive_layout, affinity
+from .account_uid import UidSearch
 from .account_verification import verified_uid_search
-from .account_guard import AccountSafetyError, check_process_account, check_account_records
+from .account_guard import AccountSafetyError, check_process_account, check_account_records, session_uid
 from .history_schema import HISTORY_CATEGORY_IDS
 from .storage_lock import serialized_storage, storage_transaction
 from .client_lang import detect_language
@@ -24,6 +24,7 @@ from .exporter import (
 )
 from .lua53 import Lua53Reader
 from .process import RemoteProcess, find_process_id, running_processes
+from .uid import read_game_uid_from_process
 
 
 ProgressCallback = Callable[[str], None]
@@ -33,6 +34,9 @@ UID_FILENAME = "uid.json"
 # 两个"增强功能"的时间预算(秒): 都不该让刷新无限等下去
 UID_SEARCH_BUDGET = 20.0
 LANG_DETECT_BUDGET = 12.0
+
+# 同一个游戏会话(pid + 启动时间)只需要确认一次 UID: 好感度页反复刷新不重复扫描
+_SESSION_UIDS: dict[tuple[int, int], str] = {}
 
 # UID 只用来命名分享文件, 必须挡掉路径穿越等奇怪输入
 UID_ALLOWED = set("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-")
@@ -93,6 +97,78 @@ def read_game_uid(
     if search.found and search.field_name:
         save_uid_field(data_dir, search.field_name)
     return search
+
+
+def read_affinity(
+    output_dir: Path,
+    progress: ProgressCallback | None = None,
+    process_name: str | Iterable[str] | None = None,
+    *,
+    process_id: int | None = None,
+) -> dict:
+    """只读读取角色好感度, 结果按 UID 单独存进 exports/<UID>_affinity.json。
+
+    与抓取抽卡记录不同, 这里不碰 ``<UID>.json`` 抽卡归档、不改账号: 只是把游戏
+    内存里已经加载的角色表读出来, 存到自己的文件里, 所以可以随时刷新。
+    UID 优先复用本次游戏启动已确认的值(抽卡读取时写过), 没有才现场读一次;
+    读不到时数据落在 ``unverified_affinity.json``, 不会猜一个 UID 挂上去。
+    """
+    report = progress or (lambda _message: None)
+    root = Path(output_dir).resolve()
+    profile, note, running_keys = detect_and_apply(output_dir)
+    if note:
+        report(note)
+    if process_name is not None:
+        names = process_name
+    elif not running_keys:
+        names = [n for prof in server_config.PROFILES.values() for n in prof.client_names]
+    else:
+        names = profile.client_names
+    pid = find_process_id(names, pid=process_id) if process_id is not None else find_process_id(names)
+    report(f"已连接游戏进程 PID {pid}，正在读取好感度")
+    with RemoteProcess(pid) as process:
+        rows = affinity.read_affinity(process)
+        uid = _session_or_live_uid(process, root, pid)
+    payload = affinity.save_cache(root, uid, rows)
+    payload["path"] = str(affinity.cache_path(root, uid))
+    owner = f"UID {uid}" if uid else "UID 未确认"
+    report(f"读取到 {len(rows)} 个角色的好感度（{owner}）")
+    return payload
+
+
+def _session_or_live_uid(process, root: Path, pid: int) -> str:
+    """本次游戏启动的 UID: 先找已确认记录, 再现场读一次(同一会话只读一次)。"""
+    try:
+        creation_time = process.get_creation_time()
+    except (OSError, AttributeError):
+        return ""
+    key = (pid, creation_time)
+    if key in _SESSION_UIDS:
+        return _SESSION_UIDS[key]
+    uid = session_uid(root, pid, creation_time)
+    if not uid:
+        try:
+            uid = read_game_uid_from_process(process)
+        except (LookupError, OSError):
+            uid = ""
+    _SESSION_UIDS[key] = uid
+    return uid
+
+
+def load_affinity(output_dir: Path) -> dict:
+    """读取上次保存的好感度(游戏没开时也能看), 优先当前账号 UID 那一份。"""
+    root = Path(output_dir).resolve()
+    account = accounts.active_account(root)
+    if account is not None and account.uid:
+        path = affinity.cache_path(root, account.uid)
+        payload = affinity.load_cache(path)
+        if payload is not None:
+            return {**payload, "path": str(path)}
+    newest = affinity.latest_cache(root)
+    if newest is not None:
+        path, payload = newest
+        return {**payload, "path": str(path)}
+    return {"uid": "", "updatedAt": "", "entries": [], "path": str(affinity.cache_path(root, ""))}
 
 
 def probe_running_keys() -> list[str]:

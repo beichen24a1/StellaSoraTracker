@@ -12,6 +12,7 @@ from stellasora_toolkit.account_guard import (
     block_process_session,
     check_account_records,
     check_process_account,
+    session_uid,
 )
 
 
@@ -51,6 +52,12 @@ class ProcessAccountGuardTests(unittest.TestCase):
         for uid in (UID_A, UID_B):
             with self.subTest(uid=uid), self.assertRaises(AccountSafetyError):
                 check_process_account(self.root, 20, 100, uid)
+
+    def test_session_uid_reads_the_already_verified_uid(self):
+        self.assertEqual(session_uid(self.root, 20, 100), "")
+        check_process_account(self.root, 20, 100, UID_A)
+        self.assertEqual(session_uid(self.root, 20, 100), UID_A)
+        self.assertEqual(session_uid(self.root, 20, 200), "")  # 另一个游戏进程
 
     def test_block_survives_fresh_python_process(self):
         check_process_account(self.root, 20, 100, UID_A)

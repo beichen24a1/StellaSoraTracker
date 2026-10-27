@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { message } from 'ant-design-vue'
-import type { AppState, Task, UpdateState, Preferences, EngineEvent, ImportFile } from './types'
+import type { AppState, Task, UpdateState, Preferences, EngineEvent, ImportFile, AffinityEntry } from './types'
 
 export const useAppStore = defineStore('app', () => {
   const state = ref<AppState | null>(null)
@@ -14,8 +14,14 @@ export const useAppStore = defineStore('app', () => {
   const processes = ref<{ name: string; pid: number; path: string }[]>([])
   const processDialog = ref(false)
   const selectedPid = ref<number | null>(null)
-  const processAction = ref<'records.capture' | 'uid.read'>('records.capture')
+  const processAction = ref<'records.capture' | 'uid.read' | 'affinity.read'>('records.capture')
   const lastOperation = ref('已准备就绪')
+  const affinity = ref<AffinityEntry[]>([])
+  const affinityUpdated = ref('')
+  const affinityUid = ref('')
+  const affinityPath = ref('')
+  const affinityBusy = ref(false)
+  const affinityLoaded = ref(false)
   const recordsFilter = ref({ category: 'all', query: '', mode: 'five', page: 1, pageSize: 10, ascending: false, fiveOnly: false, gid: null as number | null })
   const busy = computed(() => state.value?.busy || tasks.value.some(task => task.exclusive && task.state === 'running'))
   const activeTask = computed(() => tasks.value.find(task => task.state === 'running'))
@@ -60,6 +66,16 @@ export const useAppStore = defineStore('app', () => {
     if (value.name === 'result' && value.payload.result?.bindCommand) {
       if (state.value) state.value.bindCommand = value.payload.result.bindCommand
     }
+    if (value.name === 'task' && value.payload.label === '读取好感度') {
+      affinityBusy.value = value.payload.state === 'running'
+    }
+    if (value.name === 'result' && value.payload.result?.entries) {
+      affinity.value = value.payload.result.entries
+      affinityUpdated.value = value.payload.result.updatedAt || ''
+      affinityUid.value = value.payload.result.uid || ''
+      affinityPath.value = value.payload.result.path || affinityPath.value
+      affinityBusy.value = false
+    }
     if (value.name === 'result' && value.payload.result?.warnings?.length) message.warning('记录已保存，部分附加操作未完成，详见任务日志')
     if (value.name === 'result' && value.payload.result?.failures?.length) message.warning('部分文件导入失败，详见任务日志')
   }
@@ -89,7 +105,7 @@ export const useAppStore = defineStore('app', () => {
     const result = await invoke<Preferences>('preferences.save', changes)
     if (result && state.value) { state.value.preferences = result; document.documentElement.dataset.theme = result.color_mode }
   }
-  async function capture(action: 'records.capture' | 'uid.read' = 'records.capture') {
+  async function capture(action: 'records.capture' | 'uid.read' | 'affinity.read' = 'records.capture') {
     if (busy.value) return
     const result = await invoke<typeof processes.value>('processes.list')
     if (!result) return
@@ -102,7 +118,20 @@ export const useAppStore = defineStore('app', () => {
   }
   async function startProcess() {
     processDialog.value = false
-    await invoke(processAction.value, { pid: selectedPid.value })
+    if (processAction.value === 'affinity.read') affinityBusy.value = true
+    const result = await invoke(processAction.value, { pid: selectedPid.value })
+    if (processAction.value === 'affinity.read' && result === undefined) affinityBusy.value = false
+  }
+  async function loadAffinity(force = false) {
+    if (affinityLoaded.value && !force) return
+    const value = await invoke<{ entries: AffinityEntry[]; updatedAt: string; uid?: string; path?: string }>('affinity.load', {}, false)
+    if (value) {
+      affinity.value = value.entries || []
+      affinityUpdated.value = value.updatedAt || ''
+      affinityUid.value = value.uid || ''
+      affinityPath.value = value.path || ''
+    }
+    affinityLoaded.value = true
   }
   async function importFiles(files?: ImportFile[]) {
     if (busy.value) return
@@ -115,5 +144,6 @@ export const useAppStore = defineStore('app', () => {
   }
   function dispose() { unsub?.(); clearTimeout(refreshTimer) }
   return { state, error, loading, tasks, taskDrawer, update, updateOpen, processes, processDialog, selectedPid, processAction, lastOperation,
-    recordsFilter, busy, activeTask, colorMode, initialize, refresh, invoke, savePreferences, capture, startProcess, importFiles, exportRecords, dispose }
+    recordsFilter, busy, activeTask, colorMode, affinity, affinityUpdated, affinityUid, affinityPath, affinityBusy,
+    initialize, refresh, invoke, savePreferences, capture, startProcess, importFiles, exportRecords, loadAffinity, dispose }
 })

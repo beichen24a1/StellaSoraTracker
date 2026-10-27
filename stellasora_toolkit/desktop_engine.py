@@ -9,13 +9,14 @@ import threading
 from dataclasses import asdict
 from pathlib import Path
 
-from . import accounts, server_config, service
+from . import server_config, service
 from .application import Application, safe_message
 from .desktop_updates import DesktopUpdates
 from .process import find_game_processes
 
 METHODS = frozenset({
     'app.state', 'app.lifecycle', 'app.shutdown', 'records.query', 'records.capture', 'records.import', 'records.export', 'records.share',
+    'affinity.read', 'affinity.load',
     'accounts.create', 'accounts.switch', 'accounts.rename', 'accounts.remove', 'accounts.merge',
     'uid.save', 'uid.read', 'processes.list', 'server.save', 'preferences.save', 'archive.backup',
     'resources.sync', 'upload.send', 'updates.check', 'updates.download', 'updates.cancel', 'updates.install',
@@ -90,6 +91,11 @@ class Engine:
             return app.job('读取游戏 UID', lambda progress, _id: app.read_game_uid(params.get('pid'), progress))
         if method == 'records.capture':
             return app.job('抓取抽卡记录', lambda progress, _id: app.capture(params.get('pid'), progress))
+        if method == 'affinity.read':
+            # 只读内存, 不与抓取/上传互斥(不写抽卡归档)
+            return app.job('读取好感度', lambda progress, _id: app.read_affinity(params.get('pid'), progress), exclusive=False)
+        if method == 'affinity.load':
+            return app.load_affinity()
         if method == 'records.import':
             paths = params.get('paths')
             if not isinstance(paths, list) or not paths or len(paths) > 100 or any(not isinstance(p, str) or Path(p).suffix.lower() not in ('.json', '.csv') for p in paths):

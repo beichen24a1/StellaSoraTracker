@@ -20,7 +20,6 @@ import hashlib
 import json
 import sys
 import zipfile
-from collections.abc import Iterable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +30,9 @@ MANIFESTS = [
     ROOT / "resource_manifest_github.json",
 ]
 ZIP_PATH = ROOT / "resources.zip"
+
+sys.path.insert(0, str(ROOT))
+from stellasora_toolkit.catalog import FIVE_STAR_TRAVELERS, TRAVELER_NAMES  # noqa: E402
 
 
 def sha256(data: bytes) -> str:
@@ -54,7 +56,12 @@ def scan_assets(folders: dict[str, str]) -> list[dict[str, object]]:
 
 
 def backfill_metadata(items: list[dict[str, object]]) -> None:
-    """从抓取的 StellaBase 数据回填 name/rarity（仅对缺失的新条目）。"""
+    """回填 name/rarity。
+
+    优先用抓取的 StellaBase 数据; 抓取缓存只含五星, 所以四星头像(好感度页要用,
+    随包但不在同步清单之内)按目录里的名称补, 并按"是否五星"判定稀有度 ——
+    否则清单会把四星写成 rarity=5, 抽卡侧的对齐校验会误判。
+    """
     fetched: dict[str, dict[str, dict]] = {
         "traveler": {row["id"]: row for row in json.loads((FETCH_DIR / "travelers.json").read_text("utf-8"))},
         "disc": {row["id"]: row for row in json.loads((FETCH_DIR / "discs.json").read_text("utf-8"))},
@@ -65,6 +72,9 @@ def backfill_metadata(items: list[dict[str, object]]) -> None:
         if row:
             item["name"] = row["name"]
             item["rarity"] = row.get("grade" if kind == "traveler" else "star", 5)
+        elif kind == "traveler":
+            item.setdefault("name", TRAVELER_NAMES.get(item_id, f"旅人 #{item_id}"))
+            item.setdefault("rarity", 5 if item_id in FIVE_STAR_TRAVELERS else 4)
         else:
             item.setdefault("rarity", 5)
 

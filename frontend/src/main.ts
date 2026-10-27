@@ -8,11 +8,13 @@ import './motion.css'
 import App from './App.vue'
 import OverviewView from './views/OverviewView.vue'
 import RecordsView from './views/RecordsView.vue'
+import AffinityView from './views/AffinityView.vue'
 import SettingsView from './views/SettingsView.vue'
 import UploadView from './views/UploadView.vue'
 import HelpView from './views/HelpView.vue'
 const router = createRouter({ history: createWebHashHistory(), routes: [
   { path: '/', component: OverviewView }, { path: '/records', component: RecordsView },
+  { path: '/affinity', component: AffinityView },
   { path: '/settings', component: SettingsView }, { path: '/upload', component: UploadView }, { path: '/help', component: HelpView },
 ] })
 createApp(App).use(createPinia()).use(router).use(Antd).mount('#app')

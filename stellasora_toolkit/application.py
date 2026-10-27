@@ -5,9 +5,7 @@ import json
 import re
 import shutil
 import threading
-import time
 import uuid
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -16,7 +14,7 @@ from . import accounts, archive_layout, catalog_sync, official_banners, rem_uplo
 from .catalog import gacha_item_kind, gacha_item_name, is_five_star_item, same_item_name
 from .exporter import export_all, parse_import_text
 from .gacha_display import SparkReward, insert_spark_rewards
-from .gacha_stats import build_banner_stats_with_shared_pity, display_category
+from .gacha_stats import build_banner_stats_with_shared_pity
 from .presentation import activity_pools, categories, overview
 from .process import find_game_processes
 from .storage_lock import storage_transaction
@@ -396,6 +394,16 @@ class Application:
         if not result.found:
             raise ValueError(result.summary())
         return self.save_uid(result.uid)
+
+    def read_affinity(self, pid, progress=None):
+        """读取角色好感度: 只读内存, 结果单独存到账号目录的 affinity.json。"""
+        selected = self.select_process(pid)
+        return service.read_affinity(
+            self.output, progress=progress, process_name=selected.name, process_id=selected.pid)
+
+    def load_affinity(self):
+        """上次保存的好感度(游戏没开也能看)。"""
+        return service.load_affinity(self.output)
 
     def import_files(self, paths: list[str], progress):
         results, failures = [], []

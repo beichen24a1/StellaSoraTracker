@@ -27,6 +27,21 @@ def block_process_session(output_dir: Path, pid: int, creation_time: int) -> Non
     path.with_suffix(".blocked").touch(exist_ok=True)
 
 
+def session_uid(output_dir: Path, pid: int, creation_time: int) -> str:
+    """本次游戏启动已经确认过的 UID(还没确认过返回空串)。
+
+    只读: 用于复用抽卡读取时已校验的身份, 避免好感度页再扫一遍 UID。
+    """
+    try:
+        state = json.loads(_session_path(output_dir, pid, creation_time).read_text("utf-8"))
+    except (OSError, ValueError, TypeError, AccountSafetyError):
+        return ""
+    if not isinstance(state, dict) or state.get("version") != 1:
+        return ""
+    uid = state.get("uid")
+    return uid if isinstance(uid, str) and UID_PATTERN.fullmatch(uid) else ""
+
+
 def check_process_account(output_dir: Path, pid: int, creation_time: int, uid: str) -> None:
     if not isinstance(uid, str) or UID_PATTERN.fullmatch(uid) is None:
         raise AccountSafetyError("无效的游戏 UID，已停止读取")
