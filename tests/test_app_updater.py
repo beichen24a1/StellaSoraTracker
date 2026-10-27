@@ -104,8 +104,10 @@ class AppUpdaterTests(unittest.TestCase):
 
             args = popen.call_args.args[0]
             self.assertEqual(Path(args[0]).read_bytes(), b'new updater')
-            self.assertNotEqual(Path(args[0]).parent, root)
-            self.assertEqual(args[args.index("--target-dir") + 1], str(root))
+            self.assertNotEqual(Path(args[0]).parent.resolve(), root.resolve())
+            # GitHub runner 的 tempfile 目录可能带 8.3 短名（RUNNER~1），
+            # 更新器内部会 resolve 成长名，比较前两端都要规范化。
+            self.assertEqual(Path(args[args.index("--target-dir") + 1]).resolve(), root.resolve())
             self.assertEqual(args[args.index("--parent-pid") + 1], str(os.getpid()))
             self.assertEqual(args[args.index("--cleanup-dir") + 1], str(Path(args[0]).parent))
 
