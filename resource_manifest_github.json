@@ -3,12 +3,60 @@
   "base_url": "",
   "items": [
     {
+      "id": 103,
+      "kind": "traveler",
+      "path": "travelers/103.png",
+      "sha256": "022f9c7dcd8837085ead05a2d7d925593d0f4bf9a7c7464efaa76d1006b51381",
+      "name": "琥珀",
+      "rarity": 4
+    },
+    {
+      "id": 107,
+      "kind": "traveler",
+      "path": "travelers/107.png",
+      "sha256": "daf0c01248eca5a665b51e393c8c6295650ed300e7dd3f1bd72e35a2f0e82a36",
+      "name": "缇莉娅",
+      "rarity": 4
+    },
+    {
+      "id": 108,
+      "kind": "traveler",
+      "path": "travelers/108.png",
+      "sha256": "bc5f9d3efce74887ed56579fb62c8310af52e63702cf2f3e1aca171ba466f28c",
+      "name": "卡西米拉",
+      "rarity": 4
+    },
+    {
       "id": 110,
       "kind": "traveler",
       "path": "travelers/110.png",
       "sha256": "413bb31aea3595410c1150060f92e9763036eb17f32cdf0f0a441bf7ada6eb80",
       "name": "翡冷翠",
       "rarity": 5
+    },
+    {
+      "id": 111,
+      "kind": "traveler",
+      "path": "travelers/111.png",
+      "sha256": "4e8333beeca9b84d997c0eefdc78f6efde4a8aced6a6ecb1536ad4ab7a8dceaa",
+      "name": "鸢尾",
+      "rarity": 4
+    },
+    {
+      "id": 112,
+      "kind": "traveler",
+      "path": "travelers/112.png",
+      "sha256": "3183ff6db645ebd625539fd6eedee461aa86000918165eb1e791f1cb54c4a91e",
+      "name": "尘沙",
+      "rarity": 4
+    },
+    {
+      "id": 113,
+      "kind": "traveler",
+      "path": "travelers/113.png",
+      "sha256": "838b083755c60686c33bb6e3617f0075754348cdb9ffaa88e68f2d46ee213193",
+      "name": "师渺",
+      "rarity": 4
     },
     {
       "id": 114,
@@ -27,6 +75,30 @@
       "rarity": 5
     },
     {
+      "id": 116,
+      "kind": "traveler",
+      "path": "travelers/116.png",
+      "sha256": "a9d3c73ab29803561eed1b893b4b071aae8b10ad5af9fde7fe9500299a314f5a",
+      "name": "岭川",
+      "rarity": 4
+    },
+    {
+      "id": 117,
+      "kind": "traveler",
+      "path": "travelers/117.png",
+      "sha256": "96aa7068fba868d3791c038e86990cf43fa4d47756010ee2b131dc7867fd30e5",
+      "name": "璟麟",
+      "rarity": 4
+    },
+    {
+      "id": 118,
+      "kind": "traveler",
+      "path": "travelers/118.png",
+      "sha256": "71a59b15bf458be46a0cd107731232ddc797a0da8df5010dcad083a30f3b7726",
+      "name": "科洛妮丝",
+      "rarity": 4
+    },
+    {
       "id": 119,
       "kind": "traveler",
       "path": "travelers/119.png",
@@ -35,12 +107,44 @@
       "rarity": 5
     },
     {
+      "id": 120,
+      "kind": "traveler",
+      "path": "travelers/120.png",
+      "sha256": "552d0ee6d03fd706a7647704306c38f18cd1e49f1951a4c370ecf63396432813",
+      "name": "卡娜丝",
+      "rarity": 4
+    },
+    {
+      "id": 123,
+      "kind": "traveler",
+      "path": "travelers/123.png",
+      "sha256": "9812ffa39e2d9220e780762c9e4d3d1d10ade03ca1eb9a2da54197e0efda3ba1",
+      "name": "杏子",
+      "rarity": 4
+    },
+    {
       "id": 125,
       "kind": "traveler",
       "path": "travelers/125.png",
       "sha256": "cfe6250c98e0e60ccf38aaf764b32bc59b6f00b508a043f14a9977b7292ea304",
       "name": "苍兰",
       "rarity": 5
+    },
+    {
+      "id": 126,
+      "kind": "traveler",
+      "path": "travelers/126.png",
+      "sha256": "6d9b0fb01b9a1fa0486fdbdaa93c3277baf7538f0f4c53c6507af916c73c09f8",
+      "name": "紫槿",
+      "rarity": 4
+    },
+    {
+      "id": 127,
+      "kind": "traveler",
+      "path": "travelers/127.png",
+      "sha256": "8edca02d208703a4acad6e2ad2cd3a3c5ffc3d8786c8603a13551cdd48f14a13",
+      "name": "特丽莎",
+      "rarity": 4
     },
     {
       "id": 130,
@@ -91,6 +195,14 @@
       "rarity": 5
     },
     {
+      "id": 139,
+      "kind": "traveler",
+      "path": "travelers/139.png",
+      "sha256": "24ae63eab4bb5bd94540190c29680c3e5ea1e3fd1389843152ac7d73e182820f",
+      "name": "艾蕾",
+      "rarity": 5
+    },
+    {
       "id": 140,
       "kind": "traveler",
       "path": "travelers/140.png",
@@ -105,6 +217,14 @@
       "sha256": "1cdbb7cb0b7dd2f4f10df4973e606fcfc93c38bb48d4fb9f2e0cd6b7488d59f9",
       "name": "赤霞",
       "rarity": 5
+    },
+    {
+      "id": 142,
+      "kind": "traveler",
+      "path": "travelers/142.png",
+      "sha256": "2f2032cf01b594d2c251e412bee85994928baa803ce37461a069387c76964c0e",
+      "name": "珂赛特",
+      "rarity": 4
     },
     {
       "id": 143,
@@ -131,12 +251,28 @@
       "rarity": 5
     },
     {
+      "id": 147,
+      "kind": "traveler",
+      "path": "travelers/147.png",
+      "sha256": "a652b32b7d8fec7944cad6acc3a3eb87be74334cc6acbedffec20a7eb7ec08ed",
+      "name": "焦糖",
+      "rarity": 4
+    },
+    {
       "id": 149,
       "kind": "traveler",
       "path": "travelers/149.png",
       "sha256": "553b69be9211c7981e856c250ccb42d377d975d6b7e920afdf201bb0a4ae18dd",
       "name": "格芮",
       "rarity": 5
+    },
+    {
+      "id": 150,
+      "kind": "traveler",
+      "path": "travelers/150.png",
+      "sha256": "0e548734c2dfddf3bbad621439f630d4a0ec06f50efd7ceaf7a241d02e3f2b9c",
+      "name": "菈露",
+      "rarity": 4
     },
     {
       "id": 155,
@@ -184,6 +320,14 @@
       "path": "travelers/160.png",
       "sha256": "52a39ef2573ce463a7c2ed704831f59255f16053a6542a3747dd60024922314e",
       "name": "薇洛（盛夏）",
+      "rarity": 5
+    },
+    {
+      "id": 162,
+      "kind": "traveler",
+      "path": "travelers/162.png",
+      "sha256": "b0ed95c13f0a08d2bd23383d76e316758b2a5113752b1841d6fd96828de8f4e7",
+      "name": "尘沙（源初）",
       "rarity": 5
     },
     {
@@ -641,8 +785,38 @@
       "sha256": "db6e36f3e9ee555b15417817627ca74ea583657713cb240dfbd49a8bfb895ccf",
       "name": "荣誉时刻",
       "rarity": 5
+    },
+    {
+      "id": 214061,
+      "kind": "disc",
+      "path": "discs/214061.png",
+      "sha256": "4c3a9184bb35825cd0636a66a8e58b87e14fcc0fce2df868be93191a512c3435",
+      "name": "睡前童话",
+      "rarity": 5
+    },
+    {
+      "id": 214062,
+      "kind": "disc",
+      "path": "discs/214062.png",
+      "sha256": "25ba269af18d22aa44d5491058ab861d044a775f074e1e5b33684e7607aa48df",
+      "name": "美好，尽在昨日",
+      "rarity": 5
+    },
+    {
+      "id": 214066,
+      "kind": "disc",
+      "path": "discs/214066.png",
+      "sha256": "a914b1e7fc4cc2db5674afc2c4f9663526decc396c2eba4d28ce6ed4793bef7e",
+      "rarity": 5
+    },
+    {
+      "id": 214067,
+      "kind": "disc",
+      "path": "discs/214067.png",
+      "sha256": "4bef1ace8b845b06d9de1a8dc4baeb3601de833d0d1b4fee342127fac97a2a07",
+      "rarity": 5
     }
   ],
   "archive_url": "",
-  "archive_sha256": "640989d439c64e840c38d50ae1c170454c5514b5a70e9d703936010dbf458fe2"
+  "archive_sha256": "79e096ab7a23059c39130c0b3c224866f0d24354dbcaf278cb7175cf2ca4b9dd"
 }

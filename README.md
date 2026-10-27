@@ -20,7 +20,7 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 ### Electron 桌面版
 
-当前源码默认使用 **Vue 3 + TypeScript + Electron**，通过本地 JSON Lines 接口复用 Python 抓取、归档、防串号和上传逻辑。左侧五页布局保留，只有白/黑两种主题；首次默认白色，旧 A 映射黑色、旧 B/C 映射白色，选择保存在 `color_mode`，不覆盖旧主题字段。今日运势入口已移除。
+当前源码默认使用 **Vue 3 + TypeScript + Electron**，通过本地 JSON Lines 接口复用 Python 抓取、归档、防串号和上传逻辑。左侧导航为「招募总览 / 招募记录 / 好感度 / 数据与设置 / 上传与分享 / 使用说明」，只有白/黑两种主题；首次默认白色，旧 A 映射黑色、旧 B/C 映射白色，选择保存在 `color_mode`，不覆盖旧主题字段。今日运势入口已移除。
 
 更新界面增加可滚动的更新说明、下载进度/速度/剩余时间、后台下载、取消、重试和稍后安装；已校验的更新包在重启后重新核验再恢复。任务与日志从底部状态栏打开，上传地址和归档原文不进入日志。完整迁移对照见 [功能对照表](docs/electron-parity.json)。
 
@@ -34,9 +34,9 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 ### 已发布版本
 
-当前测试版为 [1.3.0.bata2](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata2)，下载 `StellaSoraGachaTool-1.3.0.bata2-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 exe。原 sfjdk 版可复制完整 `exports` 到新版程序旁；原 zhenkotone 版可在首次使用时识别根目录已有的有效 `<UID>.json`，也可使用导入，原文件请保留。[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 单独保留。
+当前正式版为 [1.3.2](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.2)，下载 `StellaSoraGachaTool-1.3.2-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 exe。原 sfjdk 版可复制完整 `exports` 到新版程序旁；原 zhenkotone 版可在首次使用时识别根目录已有的有效 `<UID>.json`，也可使用导入，原文件请保留。[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 单独保留。
 
-本次更新与校验说明见 [1.3.0.bata2 更新日志](docs/releases/v1.3.0.bata2.md)。版本拼写按维护者指定保留；Python 包元数据使用 `1.3.0b2`，Electron 元数据使用 `1.3.0-beta.2`。
+本次更新与校验说明见 [1.3.2 更新日志](docs/releases/v1.3.2.md)。`1.3.0.bata2` 是首个 Electron 测试版，历史 `1.3.0.bata1` 保留为 Qt 客户端。
 
 发行形式继续只提供 Windows 免安装 ZIP，不另外提供安装向导版。
 
