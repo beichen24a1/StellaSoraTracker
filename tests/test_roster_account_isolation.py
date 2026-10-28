@@ -24,7 +24,7 @@ class RosterIsolationTests(unittest.TestCase):
         result = service.load_roster(self.output)
         self.assertEqual(result['uid'], self.b.uid)
         self.assertEqual(result['characters'], [])
-        self.assertEqual(Path(result['path']), roster.cache_path(self.output, self.b.uid))
+        self.assertEqual(Path(result['path']).resolve(), roster.cache_path(self.output, self.b.uid).resolve())
 
     def test_unknown_account_only_reads_unverified_cache(self):
         unknown = accounts.create(self.output, name='未绑定')
