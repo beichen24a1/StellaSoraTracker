@@ -31,6 +31,7 @@ const methods = new Set([
   'resources.sync', 'upload.send', 'updates.check', 'updates.download', 'updates.cancel', 'updates.install',
   'affinity.read', 'affinity.load',
   'roster.read', 'roster.load',
+  'calendar.get', 'calendar.refresh',
 ])
 const tokens = new Map<string, { path: string; kind: 'import' | 'export' }>()
 let window: BrowserWindow | null = null
@@ -118,7 +119,7 @@ function trustedSender(event: Electron.IpcMainInvokeEvent) {
 
 ipcMain.handle('stella:request', async (event, method, raw) => {
   trustedSender(event)
-  if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','engine.reconnect','app.loaded'].includes(method))) throw new Error('不支持的操作')
+  if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','shell.openCalendarArticle','engine.reconnect','app.loaded'].includes(method))) throw new Error('不支持的操作')
   if (raw !== undefined && (raw === null || Array.isArray(raw) || typeof raw !== 'object')) throw new Error('参数无效')
   const params: Record<string, any> = raw ? { ...(raw as Record<string, any>) } : {}
   if (method === 'app.loaded') {
@@ -142,6 +143,11 @@ ipcMain.handle('stella:request', async (event, method, raw) => {
   }
   if (method === 'records.export') { params.directory = redeem(params.token, 'export'); delete params.token }
   if (method.startsWith('shell.')) {
+    if (method === 'shell.openCalendarArticle') {
+      if (!Number.isInteger(params.id) || params.id <= 0 || params.id >= 1_000_000_000) throw new Error('公告编号无效')
+      await shell.openExternal(`https://stellasora.yostar.cn/news/${params.id}`)
+      return { ok: true }
+    }
     if (method === 'shell.openExports') {
       const error = await shell.openPath(outputRoot); if (error) throw new Error('无法打开数据目录'); return { ok: true }
     }
@@ -206,6 +212,10 @@ async function createWindow() {
       if (!/^(?:(?:travelers|discs)\/\d+\.png|app_icon\.(png|ico))$/.test(relative)) return new Response('Not found', { status: 404 })
       root = assetsRoot; target = path.join(cacheAssets, relative)
       if (!fs.existsSync(target)) target = path.join(root, relative)
+    } else if (address.hostname === 'calendar') {
+      if (!/^[a-f0-9]{64}\.webp$/.test(relative)) return new Response('Not found', { status: 404 })
+      target = path.join(outputRoot, 'calendar', 'images', relative)
+      if (!fs.existsSync(target)) return new Response('Not found', { status: 404 })
     } else if (address.hostname === 'ui') {
       root = path.join(frontendRoot, 'dist')
       target = path.resolve(root, relative || 'index.html')

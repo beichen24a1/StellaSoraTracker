@@ -19,5 +19,7 @@ export interface RosterEmblem { slot: number; slotName: string; index: number; p
 export interface RosterTalent { active: number; max: number; nodes: number[]; names: string[]; descs: string[]; fate: number[] }
 export interface RosterSlot { slot: number; name: string; unlockLevel: number }
 export interface RosterCharacter { id: number; name: string; level: number; advance: number; favorite: boolean; skills: number[]; talent: RosterTalent; emblems: RosterEmblem[]; slots: RosterSlot[]; potentials: Record<string, string[]> }
+export interface CalendarEntry { id: number; name: string; title: string; kind: 'version' | 'event' | 'permanent' | 'recruit'; startAt: number; endAt: number; startApproximate: boolean; description: string; cover: string; url: string }
+export interface CalendarSnapshot { items: CalendarEntry[]; updatedAt: number; loading: boolean; stale: boolean; error: string; offline: boolean; source: string; sourceUrl: string }
 export interface DesktopAPI { request<T=any>(method: string, params?: Record<string, unknown>): Promise<T>; onEvent(callback: (event: EngineEvent) => void): () => void }
 declare global { interface Window { stella: DesktopAPI } }

@@ -12,12 +12,14 @@ from pathlib import Path
 from . import server_config, service
 from .application import Application, safe_message
 from .desktop_updates import DesktopUpdates
+from .official_events import OfficialCalendar
 from .process import find_game_processes
 
 METHODS = frozenset({
     'app.state', 'app.lifecycle', 'app.shutdown', 'records.query', 'records.capture', 'records.import', 'records.export', 'records.share',
     'affinity.read', 'affinity.load',
     'roster.read', 'roster.load',
+    'calendar.get', 'calendar.refresh',
     'accounts.create', 'accounts.switch', 'accounts.rename', 'accounts.remove', 'accounts.merge',
     'uid.save', 'uid.read', 'processes.list', 'server.save', 'preferences.save', 'archive.backup',
     'resources.sync', 'upload.send', 'updates.check', 'updates.download', 'updates.cancel', 'updates.install',
@@ -27,6 +29,7 @@ class Engine:
     def __init__(self, output: Path, app_root: Path, emit, *, offline=False):
         self.app = Application(output, emit, offline=offline)
         self.updates = DesktopUpdates(self.app, app_root)
+        self.calendar = OfficialCalendar(self.app)
         self.stopping = False
 
     def dispatch(self, method: str, params: dict):
@@ -41,6 +44,7 @@ class Engine:
             if app.busy:
                 raise ValueError('正在保存数据，请稍后关闭')
             self.updates.cancel.set()
+            self.calendar.cancelled.set()
             deadline = __import__('time').monotonic()+35
             for worker in list(app._threads):
                 if worker.name in ('stella-下载更新', 'stella-检查更新'):
@@ -49,6 +53,10 @@ class Engine:
                 raise ValueError('正在停止网络请求，请稍后关闭')
             self.stopping = True
             return {'ok': True}
+        if method == 'calendar.get':
+            return self.calendar.snapshot()
+        if method == 'calendar.refresh':
+            return self.calendar.refresh(force=params.get('force') is True)
         if method == 'records.query':
             return app.query_records(params)
         if method == 'processes.list':
@@ -172,6 +180,7 @@ def main(argv=None):
         if engine.stopping:
             break
     engine.updates.cancel.set()
+    engine.calendar.cancelled.set()
     return 0
 
 
