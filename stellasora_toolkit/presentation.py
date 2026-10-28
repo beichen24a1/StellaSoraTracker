@@ -1,8 +1,10 @@
 """Presentation data for the desktop application; no archive writes."""
 from dataclasses import dataclass, field
 
-from .catalog import gacha_item_name, same_item_name
-from .gacha_stats import build_category_stat, build_banner_stats_with_shared_pity, display_category
+from .catalog import gacha_item_name, is_five_star_item, same_item_name
+from .gacha_stats import (
+    CATEGORY_ANNIVERSARY, build_category_stat, build_banner_stats_with_shared_pity, display_category,
+)
 from .official_banners import official_pool_info
 from .constants import GACHA_CATEGORY_ORDER, OFFICIAL_LIMITED_POOL_INFO
 from .gacha_display import build_spark_rewards
@@ -24,9 +26,14 @@ class Overview:
 
 
 def categories(records):
-    result = {key: [] for key in GACHA_CATEGORY_ORDER}
+    """按展示分类分组: 四张常规卡 + 独立的周年特选组。
+
+    周年特选(#21)不再并进「秘纹限时」, 而是单独留在 CATEGORY_ANNIVERSARY 里:
+    它只在「活动卡池」卡片和活动筛选里出现, 不参与四张常规卡的统计。
+    判不出 Gid 的新池子仍由 display_category() 按掉落内容兜底, 不会从界面消失。
+    """
+    result = {key: [] for key in (*GACHA_CATEGORY_ORDER, CATEGORY_ANNIVERSARY)}
     for record in records:
-        # 显示用: 活动池(未知 Gid)按掉落内容归到限时类, 否则它们会从界面消失
         key = display_category([record])
         if key in result:
             result[key].append(record)
@@ -72,9 +79,10 @@ def activity_pools(records) -> list[dict]:
 
 def overview(records) -> Overview:
     grouped = categories(records)
+    # 只有四张常规卡进统计; 周年特选单独成组(#21), 不能稀释限时卡的数字。
     stats = {
-        key: build_category_stat(groups, is_up=is_up if 'limited' in key else None)
-        for key, groups in grouped.items()
+        key: build_category_stat(grouped[key], is_up=is_up if 'limited' in key else None)
+        for key in GACHA_CATEGORY_ORDER
     }
     banner_info = dict(OFFICIAL_LIMITED_POOL_INFO)
     for group in grouped[GACHA_CATEGORY_ORDER[0]]:
@@ -84,5 +92,8 @@ def overview(records) -> Overview:
     rewards = build_spark_rewards(grouped[GACHA_CATEGORY_ORDER[0]], banner_info)
     totals = {pool.gid: pool.total_pulls for pool in build_banner_stats_with_shared_pity(grouped[GACHA_CATEGORY_ORDER[0]])}
     wells = {gid: totals[gid] for gid in rewards}
+    # 账号累计(含活动池)独立统计: 活动池不参与四张卡的统计口径, 但抽数和五星
+    # 仍然是这个账号的真实总量(#21)。
     return Overview(stats, sum(len(r.get('Ids', [])) for r in records),
-                    sum(len(s.five_stars) for s in stats.values() if s), wells, rewards)
+                    sum(1 for record in records for item in record.get('Ids', []) if is_five_star_item(item)),
+                    wells, rewards)

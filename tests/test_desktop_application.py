@@ -259,6 +259,19 @@ class ApplicationTests(unittest.TestCase):
         traveler = next(row for row in result['items'] if row['gid'] == 10162 and row['itemId'] == 162)
         self.assertEqual(traveler['interval'], 2)
 
+    def test_activity_records_are_reachable_but_kept_out_of_regular_categories(self):
+        """#21: 活动池只走「活动卡池」筛选, 不再混进秘纹限时的统计和列表。"""
+        self.import_one(categories={'3':[group(300,gid=21115,ids=[212001,212002])],
+                                    '6':[group(200,1001,[162,103])]})
+        state = self.app.state()
+        cards = {card['key']: card for card in state['summary']['categories']}
+        self.assertEqual(cards['disc_limited']['pulls'], 2, '活动池不能算进秘纹限时')
+        self.assertEqual([row['gid'] for row in state['summary']['activity']], [1001])
+        activity = self.app.query_records({'mode':'all','category':'activity'})
+        self.assertEqual({row['gid'] for row in activity['items']}, {1001})
+        limited = self.app.query_records({'mode':'all','category':'disc_limited'})
+        self.assertNotIn(1001, {row['gid'] for row in limited['items']})
+
 
 class UpdateWorkflowTests(unittest.TestCase):
     def setUp(self):

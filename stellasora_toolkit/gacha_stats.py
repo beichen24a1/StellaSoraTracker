@@ -102,14 +102,18 @@ def classify_history_category(groups: list[dict[str, Any]]) -> str:
 
 
 def display_category(groups: list[dict[str, Any]]) -> str:
-    """**只给界面用**的分类: 活动池(含周年特选)按掉落内容归到限时类。
+    """**只给界面用**的分类: 判得出官方分类就原样返回, 判不出来才按掉落内容兜底。
 
     与 classify_history_category 的区别: 这里允许猜, 因为只影响展示分组,
     不写任何文件; 而写归档必须保持游戏原始分类(周年特选仍然是分类 6)。
-    周年特选在界面里算活动卡池, 不再单独占一类。
+
+    周年特选(分类 6)单独成组 —— 界面里由「活动卡池」卡片展示, 不再按掉落内容
+    并进「秘纹限时」: 否则它的抽数/五星/UP 平均和垫抽会把秘纹限时的统计口径
+    稀释掉, 同一批抽还会在界面上出现两次(#21)。真正判不出 Gid 的新池子仍然
+    按内容兜底, 免得它们从界面消失。
     """
     kind = classify_history_category(groups)
-    if kind not in (CATEGORY_UNKNOWN, CATEGORY_ANNIVERSARY):
+    if kind != CATEGORY_UNKNOWN:
         return kind
     travelers, discs = _pull_kinds(groups)
     if discs > travelers:
