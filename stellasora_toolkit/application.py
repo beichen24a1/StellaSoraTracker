@@ -155,17 +155,18 @@ class Application:
             cards = []
             self._rows = []
             self._pools = []
-            for category in GACHA_CATEGORY_ORDER:
-                value = stats.category_stats[category]
-                if value:
-                    total, five = value.total_pulls, len(value.five_stars)
-                    cards.append({'key': category, 'name': GACHA_CATEGORY_NAMES[category], 'pulls': total, 'five': five,
-                                  'pity': value.current_pity, 'limit': GACHA_CATEGORY_PITY_LIMITS[category],
-                                  'average': round(total/five, 1) if five else None})
-                else:
-                    cards.append({'key': category, 'name': GACHA_CATEGORY_NAMES[category], 'pulls': 0, 'five': 0,
-                                  'pity': 0, 'limit': GACHA_CATEGORY_PITY_LIMITS[category], 'average': None})
-                for pool in build_banner_stats_with_shared_pity(grouped[category]):
+            for category, groups in grouped.items():
+                if category in GACHA_CATEGORY_ORDER:
+                    value = stats.category_stats[category]
+                    if value:
+                        total, five = value.total_pulls, len(value.five_stars)
+                        cards.append({'key': category, 'name': GACHA_CATEGORY_NAMES[category], 'pulls': total, 'five': five,
+                                      'pity': value.current_pity, 'limit': GACHA_CATEGORY_PITY_LIMITS[category],
+                                      'average': round(total/five, 1) if five else None})
+                    else:
+                        cards.append({'key': category, 'name': GACHA_CATEGORY_NAMES[category], 'pulls': 0, 'five': 0,
+                                      'pity': 0, 'limit': GACHA_CATEGORY_PITY_LIMITS[category], 'average': None})
+                for pool in build_banner_stats_with_shared_pity(groups):
                     info = official_banners.official_pool_info(pool.gid)
                     name = info[0] if info else official_banners.pool_display_name(pool.gid)
                     has_up = category in LIMITED and bool(info and info[3])
@@ -183,7 +184,7 @@ class Application:
                                         'five': len(pool.five_stars), 'start': info[1] if info else '', 'end': info[2] if info else '',
                                         'lastTime': pool.end_time, 'well': pool.gid in stats.rewards, 'entries': pulls})
                 since_five = 0
-                for group_index, group in enumerate(sorted(grouped[category], key=lambda g: (g.get('Time', 0), g['Gid']))):
+                for group_index, group in enumerate(sorted(groups, key=lambda g: (g.get('Time', 0), g['Gid']))):
                     gid = group['Gid']
                     info = official_banners.official_pool_info(gid)
                     pool_name = info[0] if info else official_banners.pool_display_name(gid)

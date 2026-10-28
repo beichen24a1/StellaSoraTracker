@@ -151,7 +151,9 @@ class CurrentInterfaceTests(unittest.TestCase):
         stats = overview([group()])
         self.assertEqual(len(stats.category_stats), 4)
         self.assertNotIn('anniversary_selected', stats.category_stats)
-        self.assertEqual(len(stats.category_stats['traveler_limited'].five_stars), 2)
+        # #21: 周年特选不再并进「旅人限时/秘纹限时」, 四张常规卡都为空。
+        self.assertTrue(all(card is None for card in stats.category_stats.values()))
+        self.assertEqual(stats.total_pulls, 3, '累计招募仍然包含活动池')
         self.assertEqual([row['gid'] for row in activity_pools([group()])], [1001])
 
     def test_process_picker_selects_exact_pid(self):

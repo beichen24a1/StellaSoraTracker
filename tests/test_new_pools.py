@@ -341,7 +341,31 @@ class StaticPoolNameTests(unittest.TestCase):
         self.assertTrue(is_activity_pool(1001))
         rows = activity_pools([{"Gid": 1001, "Time": 1, "Ids": [162]}])
         self.assertEqual([row["gid"] for row in rows], [1001])
-        self.assertEqual(display_category([{"Gid": 1001, "Ids": [162]}]), "traveler_limited")
+        # #21: 周年特选保持自己的分类, 不再按掉落内容并进「秘纹限时」。
+        self.assertEqual(display_category([{"Gid": 1001, "Ids": [162]}]), "anniversary_selected")
+
+    def test_anniversary_pool_does_not_dilute_limited_statistics(self):
+        """#21: 秘纹限时的抽数/五星只算分类 3, 活动池单列。"""
+        from stellasora_toolkit.presentation import activity_pools, categories, overview
+        disc_pulls = [{"Gid": 21115, "Time": 1793082943 + index, "Ids": [212001] * 10} for index in range(3)]
+        activity_pulls = [{"Gid": 1001, "Time": 1792491368 + index, "Ids": [211004, 212005, 103] * 3 + [162]}
+                          for index in range(9)]
+
+        grouped = categories(activity_pulls + disc_pulls)
+        self.assertEqual(len(grouped['disc_limited']), 3)
+        self.assertEqual(len(grouped['anniversary_selected']), 9)
+        self.assertEqual(grouped['traveler_limited'], [])
+
+        stats = overview(activity_pulls + disc_pulls)
+        self.assertEqual(len(stats.category_stats), 4, '周年特选不能变成第五张卡')
+        self.assertNotIn('anniversary_selected', stats.category_stats)
+        self.assertEqual(stats.category_stats['disc_limited'].total_pulls, 30)
+        self.assertEqual(sum(card.total_pulls for card in stats.category_stats.values() if card), 30,
+                         '活动池的抽数不能再算进四张常规卡')
+        rows = activity_pools(activity_pulls + disc_pulls)
+        self.assertEqual([row['gid'] for row in rows], [1001])
+        self.assertEqual(rows[0]['pulls'], 90)
+        self.assertEqual(stats.total_pulls, 120, '累计招募仍然含活动池')
 
 
 class BundledCatalogTests(unittest.TestCase):
