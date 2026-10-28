@@ -11,7 +11,7 @@ has no chance to prompt.
 
 Installed entries are therefore *copied* into the program folder so they
 inherit its permissions, the updater's own temporary directories are reset to
-the ACL they inherit, and the installed tree is reset as well. Before the
+the ACL they inherit, and only installed program entries are reset as well. Before
 previous files are discarded the result is verified: an entry that still
 carries a protected descriptor is rejected and rolled back instead of leaving a
 program an ordinary double-click cannot start.
@@ -23,6 +23,7 @@ import ctypes
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -488,36 +489,48 @@ def verify_installation(target_dir: Path, installed: list[Path]) -> None:
             check_permission(path, execute=path.suffix.casefold() in ('.exe', '.dll', '.pyd', '.node'))
 
 
-def _tree_has_protected_acl(target_dir: Path) -> bool:
-    """Whether any program entry still carries an explicit (non-inherited) ACL."""
-    for entry in target_dir.iterdir():
-        if entry.name.casefold() in PRESERVED_TOP_LEVELS:
-            continue
-        candidates = [entry]
-        if entry.is_dir():
-            candidates.extend(entry.rglob('*'))
-        if any(_dacl_is_protected(path) for path in candidates):
-            return True
-    return False
+def _tree_has_protected_acl(entry: Path) -> bool:
+    """Check a program entry, skipping trees that link to other locations."""
+    pending = [entry]
+    protected = False
+    while pending:
+        path = pending.pop()
+        info = path.lstat()
+        reparse = getattr(info, 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0)
+        if stat.S_ISLNK(info.st_mode) or reparse:
+            log(f'程序条目包含链接，跳过自动权限修复：{entry}')
+            return False
+        if _dacl_is_protected(path):
+            protected = True
+        if stat.S_ISDIR(info.st_mode):
+            pending.extend(path.iterdir())
+    return protected
 
 
-def repair_install_permissions(target_dir: Path) -> bool:
+def repair_install_permissions(target_dir: Path, *, program_names: set[str] | None = None) -> bool:
     """Fix a program folder damaged by an update that moved files into place.
 
     Versions before the copy-based installer renamed extracted entries into the
     program folder, so every file kept the administrators-only descriptor of
     the updater's temporary directory. Resetting the tree restores the ACL the
-    folder grants, which is what makes a later double-click work again.
+    folder grants, which is what makes a later double-click work again. Limit
+    installation repairs to payload entries; never reset the root, preserved
+    user data, or healthy siblings with their own explicit permissions.
     """
     if os.name != 'nt':
         return False
     if _dacl_is_protected(target_dir):
         log('程序目录本身没有继承上级权限，跳过自动修复；请把程序放到可读写的新文件夹')
         return False
-    if not _tree_has_protected_acl(target_dir):
+    names = {name.casefold() for name in program_names} if program_names is not None else None
+    damaged = [entry for entry in target_dir.iterdir()
+               if entry.name.casefold() not in PRESERVED_TOP_LEVELS
+               and (names is None or entry.name.casefold() in names)
+               and _tree_has_protected_acl(entry)]
+    if not damaged:
         return False
     log(f'检测到更新后遗留的管理员专属权限，正在修复程序目录：{target_dir}')
-    return inherit_security(target_dir)
+    return inherit_security(*damaged)
 
 
 def replace_program_files(payload_root: Path, target_dir: Path, backup_dir: Path) -> None:
@@ -525,7 +538,7 @@ def replace_program_files(payload_root: Path, target_dir: Path, backup_dir: Path
     if not entries:
         raise ValueError("更新包内容为空")
 
-    repair_install_permissions(target_dir)
+    repair_install_permissions(target_dir, program_names={entry.name for entry in entries})
 
     moved_old: list[tuple[Path, Path]] = []
     installed_new: list[Path] = []

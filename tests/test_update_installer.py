@@ -177,6 +177,118 @@ class UpdateInstallerTests(unittest.TestCase):
 
 
 class InheritanceResetTests(unittest.TestCase):
+    @staticmethod
+    def _security_snapshot(paths):
+        return {str(path): (update_installer._dacl_is_protected(path),
+                            update_installer._file_security(path)) for path in paths}
+
+    @staticmethod
+    def _add_anonymous_read_deny(*paths):
+        quote = lambda path: str(path).replace("'", "''")
+        names = ','.join("'" + quote(path) + "'" for path in paths)
+        script = f'''
+$ErrorActionPreference = 'Stop'
+$sid = [Security.Principal.SecurityIdentifier]::new('S-1-5-7')
+foreach ($path in @({names})) {{
+    $acl = Get-Acl -LiteralPath $path
+    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid, [Security.AccessControl.FileSystemRights]::ReadData, [Security.AccessControl.AccessControlType]::Deny))
+    Set-Acl -LiteralPath $path -AclObject $acl
+}}
+'''
+        result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script],
+                                capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW,
+                                env={key:value for key,value in os.environ.items() if key.casefold() != 'psmodulepath'})
+        if result.returncode:
+            raise AssertionError(result.stderr.decode('utf-8', errors='replace'))
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
+    def test_repair_preserves_root_data_and_healthy_program_permissions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)/'app'; target.mkdir()
+            damaged = target/'resources'; damaged.mkdir(mode=0o700)
+            (damaged/'engine.dll').write_bytes(b'damaged program fixture')
+            healthy = target/'README.md'; healthy.write_bytes(b'healthy program fixture')
+            self._add_anonymous_read_deny(target, healthy)
+            preserved = [target, healthy]
+            for name in update_installer.PRESERVED_TOP_LEVELS:
+                private = target/name; private.mkdir(mode=0o700)
+                data = private/'private.json'; data.write_bytes(b'private fixture')
+                preserved.extend((private, data))
+                self.assertIs(update_installer._dacl_is_protected(private), True)
+            before = self._security_snapshot(preserved)
+            self.assertIs(update_installer._dacl_is_protected(target), False)
+
+            self.assertTrue(update_installer.repair_install_permissions(target))
+
+            self.assertIs(update_installer._dacl_is_protected(damaged), False)
+            self.assertEqual(self._security_snapshot(preserved), before,
+                             'repair must not reset root, private data, or healthy sibling ACLs')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
+    def test_repair_only_considers_payload_program_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)/'app'; target.mkdir()
+            managed = target/'resources'; managed.mkdir(mode=0o700)
+            unrelated = target/'private-notes'; unrelated.mkdir(mode=0o700)
+            before = self._security_snapshot([target, unrelated])
+
+            self.assertTrue(update_installer.repair_install_permissions(target, program_names={'ReSoUrCeS'}))
+
+            self.assertIs(update_installer._dacl_is_protected(managed), False)
+            self.assertEqual(self._security_snapshot([target, unrelated]), before)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
+    def test_full_update_preserves_user_data_security(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root/'app'; target.mkdir()
+            (target/APP_EXE_NAME).write_bytes(b'old program')
+            damaged = target/'resources'; damaged.mkdir(mode=0o700)
+            (damaged/'old.dll').write_bytes(b'old dependency')
+            unrelated = target/'private-notes'; unrelated.mkdir(mode=0o700)
+            preserved = [target, unrelated]
+            for name in update_installer.PRESERVED_TOP_LEVELS:
+                private = target/name; private.mkdir(mode=0o700)
+                data = private/'private.json'; data.write_bytes(b'private fixture')
+                preserved.extend((private, data))
+            self._add_anonymous_read_deny(target)
+            before = self._security_snapshot(preserved)
+            package = root/'update.zip'
+            with zipfile.ZipFile(package, 'w') as archive:
+                archive.writestr('StellaSoraGachaTool/'+APP_EXE_NAME, b'new program')
+                archive.writestr('StellaSoraGachaTool/resources/new.dll', b'new dependency')
+            with patch.object(update_installer, 'plain_user_can_use', return_value=True):
+                work = apply_update(package, target)
+
+            self.assertEqual((target/APP_EXE_NAME).read_bytes(), b'new program')
+            self.assertEqual((target/'resources/new.dll').read_bytes(), b'new dependency')
+            self.assertIs(update_installer._dacl_is_protected(target/'resources'), False)
+            self.assertEqual(self._security_snapshot(preserved), before)
+            for name in update_installer.PRESERVED_TOP_LEVELS:
+                self.assertEqual((target/name/'private.json').read_bytes(), b'private fixture')
+            self.assertTrue((work/'backup/resources/old.dll').is_file())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows junctions only')
+    def test_repair_does_not_follow_junctions_to_other_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root/'app'; target.mkdir()
+            managed = target/'resources'; managed.mkdir(mode=0o700)
+            outside = root/'private-target'; outside.mkdir(mode=0o700)
+            data = outside/'private.json'; data.write_bytes(b'private fixture')
+            quote = lambda path: str(path).replace("'", "''")
+            setup = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+                                    f"New-Item -ItemType Junction -Path '{quote(managed/'linked')}' -Target '{quote(outside)}' -ErrorAction Stop | Out-Null"],
+                                   capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW,
+                                   env={key:value for key,value in os.environ.items() if key.casefold() != 'psmodulepath'})
+            self.assertEqual(setup.returncode, 0, setup.stderr.decode('utf-8', errors='replace'))
+            before = self._security_snapshot([target, managed, outside, data])
+
+            with patch.object(update_installer, 'inherit_security') as reset:
+                self.assertFalse(update_installer.repair_install_permissions(target, program_names={'resources'}))
+            reset.assert_not_called()
+            self.assertEqual(self._security_snapshot([target, managed, outside, data]), before)
+
     @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
     def test_inherit_security_clears_a_protected_descriptor(self):
         with tempfile.TemporaryDirectory() as directory:
