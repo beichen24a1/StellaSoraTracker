@@ -9,6 +9,7 @@ import App from './App.vue'
 import OverviewView from './views/OverviewView.vue'
 import RecordsView from './views/RecordsView.vue'
 import AffinityView from './views/AffinityView.vue'
+import RosterView from './views/RosterView.vue'
 import SettingsView from './views/SettingsView.vue'
 import UploadView from './views/UploadView.vue'
 import HelpView from './views/HelpView.vue'
@@ -16,6 +17,7 @@ import CalendarView from './views/CalendarView.vue'
 const router = createRouter({ history: createWebHashHistory(), routes: [
   { path: '/', component: OverviewView }, { path: '/records', component: RecordsView },
   { path: '/affinity', component: AffinityView },
+  { path: '/roster', component: RosterView },
   { path: '/calendar', component: CalendarView },
   { path: '/settings', component: SettingsView }, { path: '/upload', component: UploadView }, { path: '/help', component: HelpView },
 ] })

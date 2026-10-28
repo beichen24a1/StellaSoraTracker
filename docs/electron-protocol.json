@@ -6,7 +6,7 @@
   "event": {"type":"event","name":"ready/task/changed/result/update/engineError","payload":"operation-specific DTO"},
   "renderer": "contextBridge request/onEvent/importFiles only; no raw Node, IPC or filesystem APIs",
   "fileAccess": "Electron native dialogs and native drag File objects issue opaque tokens; renderer cannot submit arbitrary paths",
-  "engineMethods": ["app.state","records.query","records.capture","records.import","records.export","records.share","affinity.read","affinity.load","accounts.create","accounts.switch","accounts.rename","accounts.remove","accounts.merge","uid.save","uid.read","processes.list","server.save","preferences.save","archive.backup","resources.sync","upload.send","updates.check","updates.download","updates.cancel","updates.install"],
+  "engineMethods": ["app.state","records.query","records.capture","records.import","records.export","records.share","affinity.read","affinity.load","roster.read","roster.load","accounts.create","accounts.switch","accounts.rename","accounts.remove","accounts.merge","uid.save","uid.read","processes.list","server.save","preferences.save","archive.backup","resources.sync","upload.send","updates.check","updates.download","updates.cancel","updates.install"],
   "mainOnly": ["app.lifecycle","app.shutdown","update process wait-list generation"],
   "storage": "existing exports/<UID>.json plus accounts/metadata, transaction locks and original-preserving migration",
   "appearance": "color_mode light/dark; legacy orbit -> dark, sky/journal -> light; unknown settings retained",

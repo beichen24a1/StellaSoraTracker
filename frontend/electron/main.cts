@@ -25,6 +25,7 @@ const methods = new Set([
   'uid.save', 'uid.read', 'processes.list', 'server.save', 'preferences.save', 'archive.backup',
   'resources.sync', 'upload.send', 'updates.check', 'updates.download', 'updates.cancel', 'updates.install',
   'affinity.read', 'affinity.load',
+  'roster.read', 'roster.load',
   'calendar.get', 'calendar.refresh',
 ])
 const tokens = new Map<string, { path: string; kind: 'import' | 'export' }>()
@@ -177,6 +178,25 @@ ipcMain.handle('stella:request', async (event, method, raw) => {
   return result
 })
 
+async function serveFile(target: string) {
+  try {
+    return await net.fetch(pathToFileURL(target).toString())
+  } catch {
+    try {
+      const data = fs.readFileSync(target)
+      const types: Record<string, string> = {
+        '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+        '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8',
+        '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf',
+      }
+      return new Response(data, { headers: { 'content-type': types[path.extname(target).toLowerCase()] || 'application/octet-stream' } })
+    } catch {
+      return new Response('Not found', { status: 404 })
+    }
+  }
+}
+
 async function createWindow() {
   protocol.handle('app', request => {
     const address = new URL(request.url)
@@ -196,7 +216,7 @@ async function createWindow() {
       target = path.resolve(root, relative || 'index.html')
       if (!target.startsWith(root+path.sep)) return new Response('Forbidden', { status: 403 })
     } else return new Response('Not found', { status: 404 })
-    return net.fetch(pathToFileURL(target).toString())
+    return serveFile(target)
   })
   engine.start()
   window = new BrowserWindow({ width: 1360, height: 900, minWidth: 960, minHeight: 680, show: false,

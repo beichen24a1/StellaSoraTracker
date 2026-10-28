@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { theme } from 'ant-design-vue'
-import { AppstoreOutlined, ProfileOutlined, SettingOutlined, CloudUploadOutlined, QuestionCircleOutlined, ImportOutlined, ReloadOutlined, HistoryOutlined, CheckCircleFilled, HeartOutlined, CalendarOutlined } from '@ant-design/icons-vue'
+import { AppstoreOutlined, ProfileOutlined, SettingOutlined, CloudUploadOutlined, QuestionCircleOutlined, ImportOutlined, ReloadOutlined, HistoryOutlined, CheckCircleFilled, HeartOutlined, IdcardOutlined, CalendarOutlined } from '@ant-design/icons-vue'
 import { useAppStore } from './store'
 import TasksDrawer from './components/TasksDrawer.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
@@ -11,6 +11,7 @@ const route = useRoute()
 const navigation = [
   { to: '/', title: '招募总览', icon: AppstoreOutlined }, { to: '/records', title: '招募记录', icon: ProfileOutlined },
   { to: '/affinity', title: '好感度', icon: HeartOutlined },
+  { to: '/roster', title: '角色', icon: IdcardOutlined },
   { to: '/calendar', title: '活动日历', icon: CalendarOutlined },
   { to: '/settings', title: '数据与设置', icon: SettingOutlined }, { to: '/upload', title: '上传与分享', icon: CloudUploadOutlined },
   { to: '/help', title: '使用说明', icon: QuestionCircleOutlined },

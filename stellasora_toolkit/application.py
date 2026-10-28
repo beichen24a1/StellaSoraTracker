@@ -406,6 +406,16 @@ class Application:
         """上次保存的好感度(游戏没开也能看)。"""
         return service.load_affinity(self.output)
 
+    def read_roster(self, pid, progress=None):
+        """读取角色等级/技能/天赋/纹章: 只读内存, 单独存成 roster.json。"""
+        selected = self.select_process(pid)
+        return service.read_roster(
+            self.output, progress=progress, process_name=selected.name, process_id=selected.pid)
+
+    def load_roster(self):
+        """上次保存的角色数据(游戏没开也能看)。"""
+        return service.load_roster(self.output)
+
     def import_files(self, paths: list[str], progress):
         results, failures = [], []
         for name in paths:
