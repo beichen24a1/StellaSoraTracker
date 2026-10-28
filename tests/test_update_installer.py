@@ -155,6 +155,82 @@ class UpdateInstallerTests(unittest.TestCase):
             self.assertEqual(original.read_bytes(), b"old")
             self.assertFalse((target / "second.dat").exists())
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
+    def test_work_directory_does_not_keep_the_administrators_only_acl(self):
+        """mkdtemp(0o700) would hand the extracted payload an admin-only DACL."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "app"
+            target.mkdir()
+            (target / APP_EXE_NAME).write_bytes(b"old")
+            package = root / "update.zip"
+            self._write_package(package, {f"StellaSoraGachaTool/{APP_EXE_NAME}": b"new"})
+
+            with self._allow_any_launch():
+                work_dir = apply_update(package, target)
+
+            self.assertIs(update_installer._dacl_is_protected(work_dir), False,
+                          "the work directory must inherit the temp folder's ACL")
+            self.assertIs(update_installer._dacl_is_protected(work_dir / "new"), False)
+            self.assertIs(update_installer._dacl_is_protected(target / APP_EXE_NAME), False,
+                          "installed files must inherit the program folder's ACL")
+
+
+class InheritanceResetTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
+    def test_inherit_security_clears_a_protected_descriptor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(tempfile.mkdtemp(prefix='stellasora-update-work-test', dir=directory))
+            self.assertIs(update_installer._dacl_is_protected(work), True,
+                          'mkdtemp(0o700) is expected to create a protected DACL')
+            self.assertTrue(update_installer.inherit_security(work))
+            self.assertIs(update_installer._dacl_is_protected(work), False)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
+    def test_inherit_security_reports_a_failing_icacls(self):
+        with patch.object(update_installer.subprocess, 'run',
+                          return_value=subprocess.CompletedProcess([], 5)):
+            self.assertFalse(update_installer.inherit_security(Path('whatever')))
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
+    def test_repairs_a_folder_damaged_by_a_legacy_moved_install(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'app'
+            target.mkdir()
+            damaged = target / APP_EXE_NAME
+            damaged.write_bytes(b'old')
+            # A legacy "move" install kept the updater's temporary descriptor:
+            # an explicit ACL instead of one inherited from the program folder.
+            setup = subprocess.run(['icacls', str(damaged), '/inheritance:r'], check=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.assertEqual(setup.returncode, 0)
+            self.assertIs(update_installer._dacl_is_protected(damaged), True)
+
+            self.assertTrue(update_installer.repair_install_permissions(target))
+            self.assertIs(update_installer._dacl_is_protected(damaged), False)
+            self.assertFalse(update_installer.repair_install_permissions(target),
+                             'a repaired folder needs no second reset')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
+    def test_leaves_a_healthy_folder_alone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            (target / APP_EXE_NAME).write_bytes(b'program')
+            (target / 'exports').mkdir()
+            with patch.object(update_installer.subprocess, 'run') as icacls:
+                self.assertFalse(update_installer.repair_install_permissions(target))
+            icacls.assert_not_called()
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows security descriptors only')
+    def test_skips_repair_when_the_program_folder_itself_is_locked_down(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            (target / APP_EXE_NAME).write_bytes(b'program')
+            with patch.object(update_installer, '_dacl_is_protected', return_value=True), \
+                    patch.object(update_installer, 'inherit_security') as reset:
+                self.assertFalse(update_installer.repair_install_permissions(target))
+            reset.assert_not_called()
+
 
 class AclDecisionTests(unittest.TestCase):
     def test_read_and_execute_grants_can_be_split_across_matching_aces(self):
@@ -278,8 +354,44 @@ class VerificationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, '新文件夹'):
                 verify_installation(self.target, [self.executable])
 
+    def test_rejects_entries_that_keep_a_protected_descriptor(self):
+        """An entry carrying the updater's temporary admin-only ACL is not usable."""
+        with patch('stellasora_toolkit.update_installer._dacl_is_protected', return_value=True), \
+                patch('stellasora_toolkit.update_installer.plain_user_can_use', return_value=True):
+            with self.assertRaisesRegex(RuntimeError, '未继承'):
+                verify_installation(self.target, [self.executable])
+
+    def test_tolerates_an_unreadable_security_descriptor(self):
+        with patch('stellasora_toolkit.update_installer._dacl_is_protected', return_value=None), \
+                patch('stellasora_toolkit.update_installer.plain_user_can_use', return_value=True):
+            verify_installation(self.target, [self.executable])
+
 
 class RestartRollbackTests(unittest.TestCase):
+    def test_restart_requests_elevation_when_the_manifest_requires_it(self):
+        """The packaged client needs UAC, so CreateProcess fails with WinError 740."""
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            (target / APP_EXE_NAME).write_bytes(b'new')
+            refused = OSError(740, '请求的操作需要提升')
+            refused.winerror = 740
+            with patch.object(update_installer.subprocess, 'Popen', side_effect=refused), \
+                    patch('stellasora_toolkit.admin.request_elevation') as elevate:
+                update_installer.restart_application(target, APP_EXE_NAME)
+            elevate.assert_called_once()
+            self.assertEqual(Path(elevate.call_args.args[0]), target / APP_EXE_NAME)
+            self.assertEqual(elevate.call_args.kwargs['working_directory'], target)
+
+    def test_restart_failures_other_than_elevation_are_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            (target / APP_EXE_NAME).write_bytes(b'new')
+            with patch.object(update_installer.subprocess, 'Popen', side_effect=OSError(5, 'access denied')), \
+                    patch('stellasora_toolkit.admin.request_elevation') as elevate:
+                with self.assertRaises(OSError):
+                    update_installer.restart_application(target, APP_EXE_NAME)
+            elevate.assert_not_called()
+
     def test_missing_backup_does_not_delete_current_program(self):
         import json
         with tempfile.TemporaryDirectory() as directory:

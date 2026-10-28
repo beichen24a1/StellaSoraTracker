@@ -228,6 +228,14 @@ def launch_update_installer(package: Path, executable: Path, *, wait_pids=()) ->
         # fixes to installation/permissions take effect during this update,
         # rather than running an older helper from the existing installation.
         _extract_update_installer(package, helper)
+        # mkdtemp() creates a protected administrators-only ACL (mode 0o700), so
+        # the helper would be unreachable for an interactive launch or for the
+        # user's later cleanup. Restore the permissions the temp folder grants.
+        try:
+            from .update_installer import inherit_security
+            inherit_security(helper_dir)
+        except Exception:
+            pass
     except Exception:
         shutil.rmtree(helper_dir, ignore_errors=True)
         raise

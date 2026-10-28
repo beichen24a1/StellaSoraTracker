@@ -1,12 +1,20 @@
 """Apply a downloaded update: replace the program files, then restart the app.
 
-The updater may run with an administrator token. Anything it *moves* keeps the security descriptor it had
-inside the updater's temporary work directory, so a program file could end up
-readable only by Administrators. A later double-click then fails with access
-denied before UAC can even prompt, which looks exactly like a dead launcher.
-Installed entries are therefore *copied* into the program folder so they inherit
-its permissions, and the result is verified before the previous files are
-discarded.
+``tempfile.mkdtemp`` asks for mode ``0o700``, which CPython turns into a
+*protected* security descriptor granting only ``OWNER RIGHTS``, ``SYSTEM`` and
+``Administrators`` — no ordinary-user entry, and no inheritance from ``%TEMP%``.
+Every file extracted below that directory inherits this administrator-looking
+ACL, so anything moved out of the work directory keeps it: the installed
+program then shows only 管理员/系统 in its 安全 tab, and copying the folder to
+another account (or starting it from one) fails with access denied while UAC
+has no chance to prompt.
+
+Installed entries are therefore *copied* into the program folder so they
+inherit its permissions, the updater's own temporary directories are reset to
+the ACL they inherit, and the installed tree is reset as well. Before the
+previous files are discarded the result is verified: an entry that still
+carries a protected descriptor is rejected and rolled back instead of leaving a
+program an ordinary double-click cannot start.
 """
 from __future__ import annotations
 
@@ -53,6 +61,8 @@ _OWNER_RIGHTS_SID = "S-1-3-4"
 # A launch from Explorer keeps these. Administrators is deny-only once UAC
 # filters the token, so membership there does not mean the user can open a file.
 _LAUNCH_GROUP_SIDS = ("S-1-5-32-545", "S-1-1-0", "S-1-5-11")
+_SE_DACL_PROTECTED = 0x1000
+_ERROR_ELEVATION_REQUIRED = 740
 
 
 def _log_path() -> Path:
@@ -131,6 +141,38 @@ def _delete_leftover(path: Path) -> bool:
         return False
     shutil.rmtree(path, ignore_errors=True)
     return not path.exists()
+
+
+def _reset_inherited_security(path: Path) -> bool:
+    """Give ``path`` and its children the ACL their parent folder defines."""
+    try:
+        result = subprocess.run(
+            ["icacls", str(path), "/reset", "/T", "/C", "/Q"],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except OSError as error:
+        log(f"无法重置权限：{path}（{error}）")
+        return False
+    if result.returncode != 0:
+        log(f"重置权限失败：{path}（icacls 退出码 {result.returncode}）")
+        return False
+    return True
+
+
+def inherit_security(*paths: Path) -> bool:
+    """Reset objects created by the updater back to inherited permissions.
+
+    ``tempfile.mkdtemp`` creates its directory with mode ``0o700``, which
+    CPython materialises as a *protected* DACL granting only ``OWNER RIGHTS``,
+    ``SYSTEM`` and ``Administrators``. Everything created inside inherits that
+    descriptor, so a program file moved out of the work directory would carry
+    an administrator-only ACL into the installation folder. Resetting restores
+    the permissions the containing folder grants even when an entry was moved.
+    """
+    if os.name != "nt":
+        return True
+    return all([_reset_inherited_security(Path(path)) for path in paths])
 
 
 def prune_stale_directories(keep: Path | None = None, *, roots: list[Path] | None = None) -> list[Path]:
@@ -345,6 +387,46 @@ def acl_grants(candidates: set[str], needed: int, aces, *, owner: str | None = N
     return (granted & needed) == needed
 
 
+def _dacl_is_protected(path: Path) -> bool | None:
+    """Whether ``path`` carries an explicit DACL instead of an inherited one.
+
+    ``None`` means the control flags could not be read, so callers must not
+    treat it as a failure.
+    """
+    if os.name != "nt":
+        return None
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi32.GetNamedSecurityInfoW.argtypes = [
+        ctypes.c_wchar_p, ctypes.c_int, ctypes.c_uint32,
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    advapi32.GetNamedSecurityInfoW.restype = ctypes.c_uint32
+    advapi32.GetSecurityDescriptorControl.argtypes = [
+        ctypes.c_void_p, ctypes.POINTER(ctypes.c_ushort), ctypes.POINTER(ctypes.c_uint32),
+    ]
+    advapi32.GetSecurityDescriptorControl.restype = ctypes.c_int
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+    descriptor = ctypes.c_void_p()
+    code = advapi32.GetNamedSecurityInfoW(
+        str(path), _SE_FILE_OBJECT, _DACL_SECURITY_INFORMATION,
+        None, None, None, None, ctypes.byref(descriptor),
+    )
+    if code or not descriptor.value:
+        return None
+    try:
+        control = ctypes.c_ushort()
+        revision = ctypes.c_uint32()
+        if not advapi32.GetSecurityDescriptorControl(descriptor, ctypes.byref(control), ctypes.byref(revision)):
+            return None
+        return bool(control.value & _SE_DACL_PROTECTED)
+    finally:
+        kernel32.LocalFree(descriptor)
+
+
 def plain_user_can_use(path: Path, *, execute: bool = False) -> bool | None:
     """Whether a normal (UAC-filtered) launch can read — and optionally run — this file.
 
@@ -374,7 +456,12 @@ def verify_installation(target_dir: Path, installed: list[Path]) -> None:
     executable = target_dir / APP_EXE_NAME
     if not executable.is_file():
         raise RuntimeError("更新后主程序不存在")
-    def check_permission(path: Path, *, execute=False):
+    def check_permission(path: Path, *, execute=False, inherited=True):
+        if inherited and _dacl_is_protected(path):
+            raise RuntimeError(
+                f"更新后的 {path.name} 未继承程序目录的权限（属性里会显示成只有管理员）；已回滚。"
+                "请将完整 ZIP 解压到有读写权限的新文件夹，再复制旧 exports 后重试"
+            )
         permission = plain_user_can_use(path, execute=execute)
         if permission is False:
             raise RuntimeError(
@@ -383,7 +470,9 @@ def verify_installation(target_dir: Path, installed: list[Path]) -> None:
             )
         if permission is None and path == executable:
             log("无法校验主程序对普通用户的权限，已跳过该检查")
-    check_permission(target_dir, execute=True)
+    # The program folder belongs to the user, so its own descriptor is not ours
+    # to judge; everything the update writes into it must inherit from it.
+    check_permission(target_dir, execute=True, inherited=False)
     check_permission(executable, execute=True)
     for entry in installed:
         if entry.is_dir():
@@ -399,10 +488,44 @@ def verify_installation(target_dir: Path, installed: list[Path]) -> None:
             check_permission(path, execute=path.suffix.casefold() in ('.exe', '.dll', '.pyd', '.node'))
 
 
+def _tree_has_protected_acl(target_dir: Path) -> bool:
+    """Whether any program entry still carries an explicit (non-inherited) ACL."""
+    for entry in target_dir.iterdir():
+        if entry.name.casefold() in PRESERVED_TOP_LEVELS:
+            continue
+        candidates = [entry]
+        if entry.is_dir():
+            candidates.extend(entry.rglob('*'))
+        if any(_dacl_is_protected(path) for path in candidates):
+            return True
+    return False
+
+
+def repair_install_permissions(target_dir: Path) -> bool:
+    """Fix a program folder damaged by an update that moved files into place.
+
+    Versions before the copy-based installer renamed extracted entries into the
+    program folder, so every file kept the administrators-only descriptor of
+    the updater's temporary directory. Resetting the tree restores the ACL the
+    folder grants, which is what makes a later double-click work again.
+    """
+    if os.name != 'nt':
+        return False
+    if _dacl_is_protected(target_dir):
+        log('程序目录本身没有继承上级权限，跳过自动修复；请把程序放到可读写的新文件夹')
+        return False
+    if not _tree_has_protected_acl(target_dir):
+        return False
+    log(f'检测到更新后遗留的管理员专属权限，正在修复程序目录：{target_dir}')
+    return inherit_security(target_dir)
+
+
 def replace_program_files(payload_root: Path, target_dir: Path, backup_dir: Path) -> None:
     entries = list(payload_root.iterdir())
     if not entries:
         raise ValueError("更新包内容为空")
+
+    repair_install_permissions(target_dir)
 
     moved_old: list[tuple[Path, Path]] = []
     installed_new: list[Path] = []
@@ -421,6 +544,11 @@ def replace_program_files(payload_root: Path, target_dir: Path, backup_dir: Path
             installed_new.append(target)
             _install_entry(source, target)
 
+        # Copying already inherits the folder's ACL, but an entry that arrived
+        # through a legacy "move" install (or a partially failed copy) can still
+        # carry the updater's restricted temporary descriptor. Resetting here
+        # repairs such a folder and guarantees the tree matches its parent.
+        inherit_security(*installed_new)
         verify_installation(target_dir, installed_new)
     except Exception:
         for target in reversed(installed_new):
@@ -442,6 +570,9 @@ def apply_update(package: Path, target_dir: Path) -> Path:
     package = package.resolve(strict=True)
     target_dir = target_dir.resolve(strict=True)
     work_dir = Path(tempfile.mkdtemp(prefix="stellasora-update-work-"))
+    # mkdtemp() asks for mode 0o700, which CPython turns into a protected
+    # administrators-only DACL; everything extracted here would inherit it.
+    inherit_security(work_dir)
     extract_dir = work_dir / "new"
     backup_dir = work_dir / "backup"
     extract_dir.mkdir()
@@ -492,7 +623,16 @@ def restart_application(target_dir: Path, executable_name: str) -> None:
     executable = target_dir / executable_name
     if not executable.is_file():
         raise FileNotFoundError(f"无法重新启动，文件不存在：{executable}")
-    subprocess.Popen([str(executable)], cwd=str(target_dir))
+    try:
+        subprocess.Popen([str(executable)], cwd=str(target_dir))
+    except OSError as error:
+        # The packaged client asks for administrator rights in its manifest, so
+        # a plain CreateProcess from an unelevated updater is refused with
+        # WinError 740 and the app never comes back after a successful update.
+        if getattr(error, "winerror", None) != _ERROR_ELEVATION_REQUIRED:
+            raise
+        from .admin import request_elevation
+        request_elevation(executable, [], working_directory=target_dir)
 
 
 def schedule_self_cleanup(helper_dir: Path | None) -> None:
