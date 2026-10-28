@@ -82,6 +82,14 @@
       "许可署名",
       "隐私排除"
     ],
+    "calendar": [
+      "国服官网公告",
+      "活动主视觉与倒计时",
+      "常驻活动与日程范围筛选",
+      "白黑主题与窄窗口",
+      "手动刷新与离线缓存",
+      "限定官网公告跳转"
+    ],
     "affinity": [
       "独立好感度页",
       "按 UID 独立存档",
@@ -98,20 +106,23 @@
       "tests/test_presentation.py",
       "tests/test_reviewed_integration.py",
       "tests/test_affinity.py",
+      "tests/test_official_events.py",
       "tests/test_electron_distribution.py",
       "existing archive, UID, upload, updater and catalog suites; no Qt dependency"
     ],
     "frontend": [
       "frontend/tests/unit/workflows.test.ts",
       "frontend/tests/unit/version.test.ts",
-      "frontend/tests/unit/affinity.test.ts"
+      "frontend/tests/unit/affinity.test.ts",
+      "frontend/tests/unit/calendar.test.ts"
     ],
     "electron": [
       "frontend/tests/e2e/desktop.spec.ts",
       "frontend/tests/e2e/update.spec.ts",
       "frontend/tests/e2e/package.spec.ts",
       "frontend/tests/e2e/large-archive.spec.ts",
-      "frontend/tests/e2e/affinity.spec.ts"
+      "frontend/tests/e2e/affinity.spec.ts",
+      "frontend/tests/e2e/calendar.spec.ts"
     ],
     "packaging": [
       "tools/pack_electron_local.py",
