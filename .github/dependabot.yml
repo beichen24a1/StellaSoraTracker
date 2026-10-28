@@ -25,6 +25,15 @@ updates:
         patterns:
           - electron
           - electron-builder
+    ignore:
+      # TypeScript 7 改了包的 exports，不再暴露 typescript/lib/tsc，
+      # vue-tsc 启动时直接 ERR_PACKAGE_PATH_NOT_EXPORTED（见已关闭的 #18）。
+      # 等 vue-tsc 声明支持 TS 7 后手动升级。
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # vue-router 5 刚合入；下一个大版本要单独验路由 API 变更。
+      - dependency-name: vue-router
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
