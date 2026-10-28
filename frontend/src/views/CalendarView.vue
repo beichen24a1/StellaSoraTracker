@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { CalendarOutlined, ReloadOutlined, ExportOutlined, ClockCircleOutlined, ArrowRightOutlined } from '@ant-design/icons-vue'
+import { CalendarOutlined, ReloadOutlined, ClockCircleOutlined, ArrowRightOutlined } from '@ant-design/icons-vue'
 import { useCalendarStore } from '../calendarStore'
 import { calendarDate, chooseFeatured, countdown, kindLabel, phase, phaseLabel, startLabel } from '../calendar'
 import type { CalendarEntry } from '../types'
@@ -33,13 +33,13 @@ onUnmounted(() => { unsubscribe?.(); if (ticker) clearInterval(ticker) })
   <section class="page calendar-page">
     <div class="page-heading calendar-heading">
       <div><div class="eyebrow">STELLA SORA · EVENTS</div><h1>活动日历</h1><p class="muted">把握每一段旅程。活动时间均为北京时间（UTC+8）。</p></div>
-      <div class="calendar-actions"><a-button @click="store.openArticle()"><ExportOutlined aria-hidden="true"/> 国服官网</a-button><a-button type="primary" :loading="store.data.loading" @click="store.refresh(true)"><ReloadOutlined v-if="!store.data.loading" aria-hidden="true"/>刷新活动</a-button></div>
+      <div class="calendar-actions"><a-button type="primary" :loading="store.data.loading" @click="store.refresh(true)"><ReloadOutlined v-if="!store.data.loading" aria-hidden="true"/>刷新活动</a-button></div>
     </div>
     <div class="calendar-source"><span class="calendar-source-dot"></span><strong>国服官网活动</strong><span>独立于当前账号与服务器</span><time v-if="store.data.updatedAt">{{ store.data.stale ? '缓存于' : '更新于' }} {{ calendarDate(store.data.updatedAt) }}</time><span v-else>首次进入时同步官网公告</span></div>
     <a-alert v-if="store.connectionError || store.data.error" class="calendar-alert" type="warning" show-icon :message="store.connectionError || store.data.error"/>
 
     <div v-if="store.data.loading && !store.data.items.length" class="calendar-loading panel" role="status"><a-spin size="large"/><h2>正在整理活动日程</h2><p class="muted">读取官网公告，并将活动封面保存到本地。</p></div>
-    <div v-else-if="!store.data.items.length" class="calendar-loading panel"><CalendarOutlined class="calendar-empty-icon"/><h2>暂时没有可显示的活动</h2><p class="muted">联网刷新后即可查看日程，也可以直接前往国服官网。</p><a-button @click="store.refresh(true)">重新获取</a-button></div>
+    <div v-else-if="!store.data.items.length" class="calendar-loading panel"><CalendarOutlined class="calendar-empty-icon"/><h2>暂时没有可显示的活动</h2><p class="muted">联网刷新后即可查看日程。</p><a-button @click="store.refresh(true)">重新获取</a-button></div>
     <div v-else class="calendar-layout">
       <div class="calendar-main">
         <Transition name="calendar-feature" mode="out-in">

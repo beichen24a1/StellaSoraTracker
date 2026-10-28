@@ -25,9 +25,9 @@ export const useCalendarStore = defineStore('calendar', () => {
       connectionError.value = String((error as Error).message || error)
     }
   }
-  async function openArticle(id?: number) {
+  async function openArticle(id: number) {
     try {
-      await window.stella.request(id === undefined ? 'shell.openCalendarSite' : 'shell.openCalendarArticle', id === undefined ? {} : { id })
+      await window.stella.request('shell.openCalendarArticle', { id })
     } catch (error) { connectionError.value = String((error as Error).message || error) }
   }
   return { data, filter, selectedId, connectionError, load, refresh, openArticle }

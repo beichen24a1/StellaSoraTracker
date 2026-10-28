@@ -113,7 +113,7 @@ function trustedSender(event: Electron.IpcMainInvokeEvent) {
 
 ipcMain.handle('stella:request', async (event, method, raw) => {
   trustedSender(event)
-  if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','shell.openCalendarArticle','shell.openCalendarSite','engine.reconnect','app.loaded'].includes(method))) throw new Error('不支持的操作')
+  if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','shell.openCalendarArticle','engine.reconnect','app.loaded'].includes(method))) throw new Error('不支持的操作')
   if (raw !== undefined && (raw === null || Array.isArray(raw) || typeof raw !== 'object')) throw new Error('参数无效')
   const params: Record<string, any> = raw ? { ...(raw as Record<string, any>) } : {}
   if (method === 'app.loaded') {
@@ -137,9 +137,9 @@ ipcMain.handle('stella:request', async (event, method, raw) => {
   }
   if (method === 'records.export') { params.directory = redeem(params.token, 'export'); delete params.token }
   if (method.startsWith('shell.')) {
-    if (method === 'shell.openCalendarArticle' || method === 'shell.openCalendarSite') {
-      if (method === 'shell.openCalendarArticle' && (!Number.isInteger(params.id) || params.id <= 0 || params.id >= 1_000_000_000)) throw new Error('公告编号无效')
-      await shell.openExternal('https://stellasora.yostar.cn'+(method === 'shell.openCalendarArticle' ? `/news/${params.id}` : '/'))
+    if (method === 'shell.openCalendarArticle') {
+      if (!Number.isInteger(params.id) || params.id <= 0 || params.id >= 1_000_000_000) throw new Error('公告编号无效')
+      await shell.openExternal(`https://stellasora.yostar.cn/news/${params.id}`)
       return { ok: true }
     }
     if (method === 'shell.openExports') {
