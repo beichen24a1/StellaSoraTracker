@@ -89,6 +89,15 @@
       "搜索筛选",
       "收藏与排序",
       "不混入招募归档"
+    ],
+    "roster": [
+      "独立角色页",
+      "等级、突破与 5 个技能等级",
+      "天赋激活数与命运天赋",
+      "纹章槽位、强化、随机属性与词条",
+      "属性/词条/天赋名称取自游戏配置表并支持翻译",
+      "按 UID 独立存档",
+      "不混入招募归档与好感度文件"
     ]
   },
   "status": "implemented; verification results are recorded in the task and build reports",
@@ -98,13 +107,15 @@
       "tests/test_presentation.py",
       "tests/test_reviewed_integration.py",
       "tests/test_affinity.py",
+      "tests/test_roster.py",
       "tests/test_electron_distribution.py",
       "existing archive, UID, upload, updater and catalog suites; no Qt dependency"
     ],
     "frontend": [
       "frontend/tests/unit/workflows.test.ts",
       "frontend/tests/unit/version.test.ts",
-      "frontend/tests/unit/affinity.test.ts"
+      "frontend/tests/unit/affinity.test.ts",
+      "frontend/tests/unit/roster.test.ts"
     ],
     "electron": [
       "frontend/tests/e2e/desktop.spec.ts",

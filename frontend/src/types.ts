@@ -13,5 +13,11 @@ export interface QueryResult { items: (RecordRow | Pool)[]; total: number; page:
 export interface EngineEvent { type: 'event'; name: string; payload: any }
 export interface ImportFile { token: string; name: string }
 export interface AffinityEntry { id: number; name: string; level: number; exp: number; need: number; ratio: number; favorite: boolean }
+export interface RosterEmblemAttr { attrId: number; value: number; cfgValue: number; name: string }
+export interface RosterSkillAffix { typeId: number; id: number; level: number; name: string }
+export interface RosterEmblem { slot: number; slotName: string; index: number; preset: number; active: boolean; name: string; type: number; typeName: string; gemId: number; generateId: number; refreshId: number; icon: string; desc: string; locked: boolean; upgrades: number[]; alterUpgrades: number[]; affixes: number[]; alterAffixes: number[]; skillAffixes: RosterSkillAffix[]; potentialAffixes: RosterSkillAffix[]; affixNames: string[]; attrs: RosterEmblemAttr[] }
+export interface RosterTalent { active: number; max: number; nodes: number[]; names: string[]; descs: string[]; fate: number[] }
+export interface RosterSlot { slot: number; name: string; unlockLevel: number }
+export interface RosterCharacter { id: number; name: string; level: number; advance: number; favorite: boolean; skills: number[]; talent: RosterTalent; emblems: RosterEmblem[]; slots: RosterSlot[]; potentials: Record<string, string[]> }
 export interface DesktopAPI { request<T=any>(method: string, params?: Record<string, unknown>): Promise<T>; onEvent(callback: (event: EngineEvent) => void): () => void }
 declare global { interface Window { stella: DesktopAPI } }

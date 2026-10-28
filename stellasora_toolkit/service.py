@@ -7,7 +7,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Iterable
 
-from . import accounts, server_config, archive_layout, affinity
+from . import accounts, server_config, archive_layout, affinity, roster
 from .account_uid import UidSearch
 from .account_verification import verified_uid_search
 from .account_guard import AccountSafetyError, check_process_account, check_account_records, session_uid
@@ -169,6 +169,53 @@ def load_affinity(output_dir: Path) -> dict:
         path, payload = newest
         return {**payload, "path": str(path)}
     return {"uid": "", "updatedAt": "", "entries": [], "path": str(affinity.cache_path(root, ""))}
+
+
+def read_roster(
+    output_dir: Path,
+    progress: ProgressCallback | None = None,
+    process_name: str | Iterable[str] | None = None,
+    *,
+    process_id: int | None = None,
+) -> dict:
+    """只读读取角色等级/技能/天赋/纹章, 结果按 UID 存进 exports/<UID>_roster.json。"""
+    report = progress or (lambda _message: None)
+    root = Path(output_dir).resolve()
+    profile, note, running_keys = detect_and_apply(output_dir)
+    if note:
+        report(note)
+    if process_name is not None:
+        names = process_name
+    elif not running_keys:
+        names = [n for prof in server_config.PROFILES.values() for n in prof.client_names]
+    else:
+        names = profile.client_names
+    pid = find_process_id(names, pid=process_id) if process_id is not None else find_process_id(names)
+    report(f"已连接游戏进程 PID {pid}，正在读取角色数据")
+    with RemoteProcess(pid) as process:
+        rows = roster.read_roster(process, progress=report)
+        uid = _session_or_live_uid(process, root, pid)
+    payload = roster.save_cache(root, uid, rows)
+    payload["path"] = str(roster.cache_path(root, uid))
+    owner = f"UID {uid}" if uid else "UID 未确认"
+    report(f"读取到 {len(rows)} 位旅人（{owner}）")
+    return payload
+
+
+def load_roster(output_dir: Path) -> dict:
+    """读取上次保存的角色数据(游戏没开时也能看), 优先当前账号 UID 那一份。"""
+    root = Path(output_dir).resolve()
+    account = accounts.active_account(root)
+    if account is not None and account.uid:
+        path = roster.cache_path(root, account.uid)
+        payload = roster.load_cache(path)
+        if payload is not None:
+            return {**payload, "path": str(path)}
+    newest = roster.latest_cache(root)
+    if newest is not None:
+        path, payload = newest
+        return {**payload, "path": str(path)}
+    return {"uid": "", "updatedAt": "", "characters": [], "path": str(roster.cache_path(root, ""))}
 
 
 def probe_running_keys() -> list[str]:
