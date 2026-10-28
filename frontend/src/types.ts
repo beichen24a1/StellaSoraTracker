@@ -13,5 +13,7 @@ export interface QueryResult { items: (RecordRow | Pool)[]; total: number; page:
 export interface EngineEvent { type: 'event'; name: string; payload: any }
 export interface ImportFile { token: string; name: string }
 export interface AffinityEntry { id: number; name: string; level: number; exp: number; need: number; ratio: number; favorite: boolean }
+export interface CalendarEntry { id: number; name: string; title: string; kind: 'version' | 'event' | 'permanent' | 'recruit'; startAt: number; endAt: number; startApproximate: boolean; description: string; cover: string; url: string }
+export interface CalendarSnapshot { items: CalendarEntry[]; updatedAt: number; loading: boolean; stale: boolean; error: string; offline: boolean; source: string; sourceUrl: string }
 export interface DesktopAPI { request<T=any>(method: string, params?: Record<string, unknown>): Promise<T>; onEvent(callback: (event: EngineEvent) => void): () => void }
 declare global { interface Window { stella: DesktopAPI } }
