@@ -116,6 +116,7 @@
       "tests/test_reviewed_integration.py",
       "tests/test_affinity.py",
       "tests/test_roster.py",
+      "tests/test_roster_account_isolation.py",
       "tests/test_official_events.py",
       "tests/test_electron_distribution.py",
       "existing archive, UID, upload, updater and catalog suites; no Qt dependency"
@@ -133,7 +134,8 @@
       "frontend/tests/e2e/package.spec.ts",
       "frontend/tests/e2e/large-archive.spec.ts",
       "frontend/tests/e2e/affinity.spec.ts",
-      "frontend/tests/e2e/calendar.spec.ts"
+      "frontend/tests/e2e/calendar.spec.ts",
+      "frontend/tests/e2e/roster.spec.ts"
     ],
     "packaging": [
       "tools/pack_electron_local.py",

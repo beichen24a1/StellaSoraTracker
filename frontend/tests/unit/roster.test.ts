@@ -3,16 +3,17 @@ import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 import Antd from 'ant-design-vue'
 import { useAppStore } from '../../src/store'
-import type { AppState } from '../../src/types'
+import type { AppState, EngineEvent } from '../../src/types'
 import RosterView from '../../src/views/RosterView.vue'
 
 let request: ReturnType<typeof vi.fn>
 let wrappers: ReturnType<typeof mount>[]
+let emit: (event: EngineEvent) => void
 
 function state(): AppState {
   return { protocolVersion:1,version:'1.3.0.bata2',busy:false,offline:false,packaged:true,
     preferences:{color_mode:'light',auto_upload:false,auto_update:true,pool_columns:null,update_channel:'beta'},
-    accounts:[{key:'default',uid:'',name:'',label:'默认账号',groups:0}],activeAccount:'default',server:'cn',serverManual:false,
+    accounts:[{key:'default',uid:'100000001',name:'',label:'默认账号',groups:0},{key:'B',uid:'100000002',name:'',label:'B',groups:0}],activeAccount:'default',server:'cn',serverManual:false,
     servers:[{key:'cn',label:'国服'}],archivePath:'D:/exports/default.json',outputPath:'D:/exports',bindCommand:'',tasks:[],update:{status:'idle'},
     summary:{uid:'',pulls:0,five:0,rate:0,average:null,groups:0,categories:[],activity:[],firstTime:0,lastTime:0} }
 }
@@ -22,7 +23,7 @@ function installStella(routes: Record<string, (params: any) => unknown>) {
     if (method in routes) return routes[method](params)
     return { ok: true }
   })
-  window.stella = { request, onEvent: () => () => {} }
+  window.stella = { request, onEvent: callback => { emit = callback; return () => {} } }
 }
 
 function character() {
@@ -51,6 +52,8 @@ beforeEach(() => {
   useAppStore().state = state()
 })
 afterEach(() => {
+  useAppStore().dispose()
+  useAppStore().$dispose()
   for (const wrapper of wrappers) wrapper.unmount()
   document.body.innerHTML = ''
 })
@@ -62,6 +65,89 @@ function mountPage() {
 }
 
 describe('roster page', () => {
+  it('reloads the account cache after switching accounts outside the roster route', async () => {
+    installStella({ 'roster.load': () => {
+      const other = useAppStore().state!.activeAccount === 'B'
+      return { uid: other ? '100000002' : '100000001', characters: [{ ...character(), name: other ? 'B 的旅人' : 'A 的旅人' }] }
+    } })
+    const first = mountPage()
+    await flushPromises()
+    expect(first.text()).toContain('A 的旅人')
+    first.unmount()
+    useAppStore().state!.activeAccount = 'B'
+    await flushPromises()
+    const returned = mountPage()
+    await flushPromises()
+    expect(returned.text()).toContain('B 的旅人')
+    expect(returned.text()).not.toContain('A 的旅人')
+  })
+
+  it('discards a cache response arriving after the account has changed', async () => {
+    let resolveA!: (value: unknown) => void
+    installStella({ 'roster.load': () => useAppStore().state!.activeAccount === 'B'
+      ? { uid: '100000002', characters: [{ ...character(), name: 'B 的旅人' }] }
+      : new Promise(resolve => { resolveA = resolve }) })
+    const view = mountPage()
+    useAppStore().state!.activeAccount = 'B'
+    await flushPromises()
+    resolveA({ uid: '100000001', characters: [{ ...character(), name: 'A 的旅人' }] })
+    await flushPromises()
+    expect(view.text()).toContain('B 的旅人')
+    expect(view.text()).not.toContain('A 的旅人')
+  })
+
+  it('ignores a live read completed for the previous account', async () => {
+    const store = useAppStore()
+    store.state!.offline = true
+    installStella({ 'app.state': () => store.state, 'app.loaded': () => ({}),
+      'roster.load': () => ({ uid: store.state!.activeAccount === 'B' ? '100000002' : '100000001', characters: [] }),
+      'processes.list': () => [{ name: 'xtlr.exe', pid: 9, path: '' }], 'roster.read': () => ({ operationId: 'old-read' }) })
+    await store.initialize()
+    const view = mountPage()
+    await flushPromises()
+    await store.capture('roster.read')
+    store.state!.activeAccount = 'B'
+    await flushPromises()
+    emit({ type: 'event', name: 'result', payload: { operationId: 'old-read', result: { uid: '100000001', characters: [character()] } } })
+    await flushPromises()
+    expect(store.rosterUid).toBe('100000002')
+    expect(view.findAll('.roster-card')).toHaveLength(0)
+  })
+
+  it('accepts a current-account read even if its event precedes the request response', async () => {
+    const store = useAppStore()
+    store.state!.offline = true
+    installStella({ 'app.state': () => store.state, 'app.loaded': () => ({}),
+      'roster.load': () => ({ uid: '100000001', characters: [] }),
+      'processes.list': () => [{ name: 'xtlr.exe', pid: 9, path: '' }],
+      'roster.read': () => {
+        emit({ type: 'event', name: 'result', payload: { operationId: 'fast-read', result: { uid: '100000001', characters: [character()] } } })
+        return { operationId: 'fast-read' }
+      } })
+    await store.initialize()
+    const view = mountPage()
+    await flushPromises()
+    await store.capture('roster.read')
+    await flushPromises()
+    expect(view.text()).toContain('多娜')
+    expect(store.rosterBusy).toBe(false)
+  })
+
+  it('retries a failed cache load on the next visit', async () => {
+    let attempts = 0
+    installStella({ 'roster.load': () => {
+      if (++attempts === 1) throw new Error('backend disconnected')
+      return { uid: '100000001', characters: [character()] }
+    } })
+    const first = mountPage()
+    await flushPromises()
+    first.unmount()
+    const returned = mountPage()
+    await flushPromises()
+    expect(returned.text()).toContain('多娜')
+    expect(attempts).toBe(2)
+  })
+
   it('puts starred characters first', async () => {
     const other = { ...character(), id: 131, name: '星见', favorite: false, level: 95 }
     installStella({

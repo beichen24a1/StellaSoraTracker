@@ -34,6 +34,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import struct
 from dataclasses import dataclass, field
@@ -189,8 +190,60 @@ def save_cache(root: Path, uid: str, characters: list[Character]) -> dict:
     return payload
 
 
+def _cache_list(value) -> list:
+    return value[:2000] if isinstance(value, list) else []
+
+
+def _cache_ints(value) -> list[int]:
+    return [int(item) for item in _cache_list(value)]
+
+
+def _cache_text(value) -> str:
+    return value[:10000] if isinstance(value, str) else ''
+
+
+def _cache_number(value) -> float:
+    number = float(value or 0)
+    if not math.isfinite(number):
+        raise ValueError('non-finite roster attribute')
+    return number
+
+
+def _cache_emblem(item: dict) -> dict:
+    """Normalize every nested field consumed by the renderer, including old caches."""
+    defaults = Emblem(1, 0, False, '', 0, 0, 0, 0, '', '', False).as_dict()
+    result = {}
+    for key, default in defaults.items():
+        value = item.get(key, default)
+        if type(default) is bool:
+            result[key] = value is True
+        elif type(default) is int:
+            result[key] = int(value or 0)
+        elif isinstance(default, str):
+            result[key] = _cache_text(value)
+    if not 1 <= result['slot'] <= 3:
+        raise ValueError('invalid emblem slot')
+    for key in ('upgrades', 'alterUpgrades', 'affixes', 'alterAffixes'):
+        result[key] = _cache_ints(item.get(key))
+    result['affixNames'] = [_cache_text(value) for value in _cache_list(item.get('affixNames'))]
+    result['attrs'] = [
+        {'attrId': int(attr.get('attrId') or 0), 'value': _cache_number(attr.get('value')),
+         'cfgValue': _cache_number(attr.get('cfgValue')), 'name': _cache_text(attr.get('name'))}
+        for attr in _cache_list(item.get('attrs')) if isinstance(attr, dict)
+    ]
+    for key in ('skillAffixes', 'potentialAffixes'):
+        result[key] = [
+            {'typeId': int(affix.get('typeId') or 0), 'id': int(affix.get('id') or 0),
+             'level': int(affix.get('level') or 0), 'name': _cache_text(affix.get('name'))}
+            for affix in _cache_list(item.get(key)) if isinstance(affix, dict)
+        ]
+    return result
+
+
 def load_cache(path: Path) -> dict | None:
     try:
+        if Path(path).stat().st_size > 8 * 1024 * 1024:
+            return None
         payload = json.loads(Path(path).read_text("utf-8-sig"))
     except (OSError, ValueError):
         return None
@@ -199,41 +252,46 @@ def load_cache(path: Path) -> dict | None:
     characters = payload.get("characters")
     if not isinstance(characters, list):
         return None
+    uid = payload.get('uid', '')
+    if not isinstance(uid, str) or (uid and not re.fullmatch(r'[0-9]{5,15}', uid)):
+        return None
     rows = []
-    for entry in characters:
+    for entry in characters[:2000]:
         if not isinstance(entry, dict):
             continue
         try:
             talent = entry.get("talent") if isinstance(entry.get("talent"), dict) else {}
+            potentials = entry.get('potentials') if isinstance(entry.get('potentials'), dict) else {}
             row = {
                 "id": int(entry["id"]),
                 "name": str(entry.get("name") or traveler_name(entry["id"])),
                 "level": int(entry.get("level") or 0),
                 "advance": int(entry.get("advance") or 0),
                 "favorite": bool(entry.get("favorite")),
-                "skills": [int(value) for value in entry.get("skills") or []],
+                "skills": _cache_ints(entry.get('skills')),
                 "talent": {
                     "active": int(talent.get("active") or 0),
                     "max": int(talent.get("max") or 0),
-                    "nodes": [int(value) for value in talent.get("nodes") or []],
-                    "names": [str(value) for value in talent.get("names") or []],
-                    "descs": [str(value) for value in talent.get("descs") or []],
-                    "fate": [int(value) for value in talent.get("fate") or []],
+                    "nodes": _cache_ints(talent.get('nodes')),
+                    "names": [_cache_text(value) for value in _cache_list(talent.get('names'))],
+                    "descs": [_cache_text(value) for value in _cache_list(talent.get('descs'))],
+                    "fate": _cache_ints(talent.get('fate')),
                 },
-                "emblems": [item for item in entry.get("emblems") or [] if isinstance(item, dict)],
-                "slots": [item for item in entry.get("slots") or [] if isinstance(item, dict)],
+                "emblems": [_cache_emblem(item) for item in _cache_list(entry.get('emblems')) if isinstance(item, dict)],
+                "slots": [{'slot': int(item.get('slot') or 0), 'name': _cache_text(item.get('name')),
+                           'unlockLevel': int(item.get('unlockLevel') or 0)}
+                          for item in _cache_list(entry.get('slots')) if isinstance(item, dict)],
                 "potentials": {
-                    str(group): [str(name) for name in names]
-                    for group, names in (entry.get("potentials") or {}).items()
+                    str(group): [_cache_text(name) for name in _cache_list(names)]
+                    for group, names in potentials.items()
                     if isinstance(names, list)
                 },
             }
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             continue
         rows.append(row)
-    uid = payload.get("uid")
     return {
-        "uid": uid if isinstance(uid, str) else "",
+        "uid": uid,
         "updatedAt": str(payload.get("updatedAt") or ""),
         "characters": rows,
     }

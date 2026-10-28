@@ -7,11 +7,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-// 以管理员身份运行时 Chromium 渲染进程的沙箱会启动失败(launch-failed),
-// 本工具只加载本地打包页面、禁用新窗口与外部导航, 关闭沙箱是安全的。
-app.commandLine.appendSwitch('no-sandbox')
-app.commandLine.appendSwitch('disable-gpu-sandbox')
-
 const frontendRoot = path.resolve(__dirname, '..')
 const projectRoot = app.isPackaged ? path.dirname(process.execPath) : path.resolve(frontendRoot, '..')
 const appRoot = app.isPackaged ? path.dirname(process.execPath) : projectRoot
@@ -191,7 +186,7 @@ async function serveFile(target: string) {
       const data = fs.readFileSync(target)
       const types: Record<string, string> = {
         '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-        '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml',
+        '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml',
         '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8',
         '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf',
       }

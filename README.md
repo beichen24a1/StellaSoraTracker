@@ -138,7 +138,7 @@ Electron 版仅提供白色和黑色，主题在“数据与设置”切换并�
 - 随机属性名、词条名和天赋名称/描述取自游戏自带的配置表（`UIText` / `Talent`），属性按配置行的枚举值翻译，配置读不到时退回显示原始 ID；
 - 天赋与纹章分别来自 `PlayerTalentData._tbCharTalentNode` 和 `PlayerEquipmentData.tbCharEquipment`，读取方式是只读内存、按字段名动态定位，不依赖固定地址；
 - 读取结果按 UID 单独保存为 `exports/<UID>_roster.json`（读取不到 UID 时是 `unverified_roster.json`），与抽卡归档、好感度文件互不影响；
-- 页面显示数据对应的 UID，切换账号后各看各的；游戏没开时显示上次保存的结果；
+- 页面显示数据对应的 UID，切换账号后只显示该账号缓存；尚未读取时显示空状态，不借用其他账号的数据。未绑定 UID 的账号只加载未确认缓存；游戏没开时仍可查看自己的已保存结果；
 - 读取需要管理员权限并保持游戏已登录；第一次读取前请在游戏里打开一次「角色」和「纹章」界面，让客户端把对应数据加载进内存。
 
 命令行对照：`python tools/probe_character.py`（结构探针，只读，输出 `build/character_probe.json`）。

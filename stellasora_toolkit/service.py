@@ -203,19 +203,15 @@ def read_roster(
 
 
 def load_roster(output_dir: Path) -> dict:
-    """读取上次保存的角色数据(游戏没开时也能看), 优先当前账号 UID 那一份。"""
+    """仅读取当前账号的角色缓存; 未绑定账号只读取未确认缓存。"""
     root = Path(output_dir).resolve()
     account = accounts.active_account(root)
-    if account is not None and account.uid:
-        path = roster.cache_path(root, account.uid)
-        payload = roster.load_cache(path)
-        if payload is not None:
-            return {**payload, "path": str(path)}
-    newest = roster.latest_cache(root)
-    if newest is not None:
-        path, payload = newest
+    owner = account.uid if account is not None else ''
+    path = roster.cache_path(root, owner)
+    payload = roster.load_cache(path)
+    if payload is not None and payload['uid'] == owner:
         return {**payload, "path": str(path)}
-    return {"uid": "", "updatedAt": "", "characters": [], "path": str(roster.cache_path(root, ""))}
+    return {"uid": owner, "updatedAt": "", "characters": [], "path": str(path)}
 
 
 def probe_running_keys() -> list[str]:

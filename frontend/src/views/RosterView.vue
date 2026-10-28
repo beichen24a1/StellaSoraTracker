@@ -107,8 +107,10 @@ function affixNames(emblem: RosterEmblem) {
 }
 
 onMounted(() => { void store.loadRoster() })
-// 角色数据按账号单独存放: 切账号后重新读该账号的 roster.json
-watch(() => store.state?.activeAccount, () => { void store.loadRoster(true) })
+watch(() => JSON.stringify([store.state?.activeAccount, store.state?.accounts.find(account => account.key === store.state?.activeAccount)?.uid]), () => {
+  detailId.value = null
+  emblemDetail.value = null
+})
 </script>
 
 <template>

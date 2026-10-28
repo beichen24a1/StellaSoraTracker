@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import type { AppState, Task, UpdateState, Preferences, EngineEvent, ImportFile, AffinityEntry, RosterCharacter } from './types'
 
@@ -27,7 +27,13 @@ export const useAppStore = defineStore('app', () => {
   const rosterUid = ref('')
   const rosterPath = ref('')
   const rosterBusy = ref(false)
-  const rosterLoaded = ref(false)
+  const rosterOwner = computed(() => state.value?.accounts.find(account => account.key === state.value?.activeAccount)?.uid || '')
+  const rosterContext = computed(() => JSON.stringify([state.value?.activeAccount || '', rosterOwner.value]))
+  let rosterVisited = false
+  let rosterLoadedFor: string | null = null
+  let rosterEpoch = 0
+  let rosterLoadSerial = 0
+  let rosterCapture: { context: string; epoch: number } | null = null
   const recordsFilter = ref({ category: 'all', query: '', mode: 'five', page: 1, pageSize: 10, ascending: false, fiveOnly: false, gid: null as number | null })
   const busy = computed(() => state.value?.busy || tasks.value.some(task => task.exclusive && task.state === 'running'))
   const activeTask = computed(() => tasks.value.find(task => task.state === 'running'))
@@ -62,7 +68,7 @@ export const useAppStore = defineStore('app', () => {
       if (task.state !== 'running') scheduleRefresh()
     }
     if (value.name === 'changed') { if (state.value) state.value.busy = value.payload.busy; scheduleRefresh() }
-    if (value.name === 'engineError') { error.value = value.payload.message }
+    if (value.name === 'engineError') { error.value = value.payload.message; rosterBusy.value = false; rosterCapture = null }
     if (value.name === 'update') {
       const previous = update.value.status
       update.value = value.payload
@@ -84,12 +90,23 @@ export const useAppStore = defineStore('app', () => {
     }
     if (value.name === 'task' && value.payload.label === '读取角色数据') {
       rosterBusy.value = value.payload.state === 'running'
+      if (value.payload.state === 'failed' || value.payload.state === 'cancelled') rosterCapture = null
     }
     if (value.name === 'result' && Array.isArray(value.payload.result?.characters)) {
-      roster.value = value.payload.result.characters
-      rosterUpdated.value = value.payload.result.updatedAt || ''
-      rosterUid.value = value.payload.result.uid || ''
-      rosterPath.value = value.payload.result.path || rosterPath.value
+      const result = value.payload.result
+      if (rosterCapture?.context === rosterContext.value && rosterCapture.epoch === rosterEpoch) {
+        if (!rosterOwner.value || result.uid === rosterOwner.value) {
+          ++rosterLoadSerial // A pending cache load must not replace this newer read.
+          roster.value = result.characters
+          rosterUpdated.value = result.updatedAt || ''
+          rosterUid.value = result.uid || ''
+          rosterPath.value = result.path || ''
+          rosterLoadedFor = rosterContext.value
+        } else {
+          message.warning('角色数据已保存至对应 UID，请切换到该账号查看')
+        }
+      }
+      rosterCapture = null
       rosterBusy.value = false
     }
     if (value.name === 'result' && value.payload.result?.warnings?.length) message.warning('记录已保存，部分附加操作未完成，详见任务日志')
@@ -134,11 +151,16 @@ export const useAppStore = defineStore('app', () => {
   }
   async function startProcess() {
     processDialog.value = false
-    if (processAction.value === 'affinity.read') affinityBusy.value = true
-    if (processAction.value === 'roster.read') rosterBusy.value = true
-    const result = await invoke(processAction.value, { pid: selectedPid.value })
-    if (processAction.value === 'affinity.read' && result === undefined) affinityBusy.value = false
-    if (processAction.value === 'roster.read' && result === undefined) rosterBusy.value = false
+    const action = processAction.value
+    if (action === 'roster.read' && rosterBusy.value) return
+    if (action === 'affinity.read') affinityBusy.value = true
+    if (action === 'roster.read') {
+      rosterBusy.value = true
+      rosterCapture = { context: rosterContext.value, epoch: rosterEpoch }
+    }
+    const result = await invoke(action, { pid: selectedPid.value })
+    if (action === 'affinity.read' && result === undefined) affinityBusy.value = false
+    if (action === 'roster.read' && result === undefined) { rosterBusy.value = false; rosterCapture = null }
   }
   async function loadAffinity(force = false) {
     if (affinityLoaded.value && !force) return
@@ -152,16 +174,32 @@ export const useAppStore = defineStore('app', () => {
     affinityLoaded.value = true
   }
   async function loadRoster(force = false) {
-    if (rosterLoaded.value && !force) return
+    rosterVisited = true
+    const context = rosterContext.value
+    if (rosterLoadedFor === context && !force) return
+    const serial = ++rosterLoadSerial
     const value = await invoke<{ characters: RosterCharacter[]; updatedAt: string; uid?: string; path?: string }>('roster.load', {}, false)
-    if (value) {
+    if (serial !== rosterLoadSerial || context !== rosterContext.value) return
+    if (value && (value.uid || '') === rosterOwner.value) {
       roster.value = value.characters || []
       rosterUpdated.value = value.updatedAt || ''
       rosterUid.value = value.uid || ''
       rosterPath.value = value.path || ''
+      rosterLoadedFor = context
     }
-    rosterLoaded.value = true
   }
+  // Store-level invalidation remains active while settings or other routes are open.
+  watch(rosterContext, () => {
+    ++rosterEpoch
+    ++rosterLoadSerial
+    rosterCapture = null
+    rosterLoadedFor = null
+    roster.value = []
+    rosterUpdated.value = ''
+    rosterUid.value = rosterOwner.value
+    rosterPath.value = ''
+    if (rosterVisited) void loadRoster()
+  }, { flush: 'sync' })
   async function importFiles(files?: ImportFile[]) {
     if (busy.value) return
     const selected = files || await invoke<ImportFile[]>('files.selectImport')
