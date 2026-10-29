@@ -7,6 +7,7 @@ import shutil
 import threading
 import uuid
 from datetime import datetime
+from itertools import islice
 from pathlib import Path
 from typing import Callable
 
@@ -19,6 +20,7 @@ from .presentation import activity_pools, categories, overview
 from .process import find_game_processes
 from .storage_lock import storage_transaction
 from .constants import APP_VERSION, GACHA_CATEGORY_NAMES, GACHA_CATEGORY_ORDER, GACHA_CATEGORY_PITY_LIMITS
+from .dashboard import cached_summary
 
 MANUAL_UPLOAD_URL = 'https://share.fnnas.net/s/8b355174d383436899'
 LIMITED = ('traveler_limited', 'disc_limited')
@@ -226,6 +228,18 @@ class Application:
                 'servers': [{'key': p.key, 'label': p.label} for p in server_config.PROFILES.values()],
                 'archivePath': str(service.active_archive_path(self.output)), 'summary': view,
                 'tasks': self.tasks[:50], 'outputPath': str(self.output), 'bindCommand': rem_upload.bind_command_for(view['uid']) if re.fullmatch(r'\d{5,15}', view['uid']) else ''}
+
+    def home_summary(self):
+        with storage_transaction(self.output), self._gate:
+            self._view()
+            account = accounts.active_account(self.output)
+            uid = account.uid if account else ''
+            recent = islice((row for row in self._rows if row['five']), 4)
+            return {'accountKey': account.key if account else '', 'uid': uid,
+                    'roster': cached_summary(self.output, uid, kind='roster'),
+                    'affinity': cached_summary(self.output, uid, kind='affinity'),
+                    'recentFive': [{key: row[key] for key in ('key', 'name', 'kind', 'itemId', 'time', 'poolName', 'result')}
+                                   for row in recent]}
 
     def query_records(self, params: dict):
         self._view()

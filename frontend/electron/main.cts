@@ -24,7 +24,7 @@ const methods = new Set([
   'accounts.create', 'accounts.switch', 'accounts.rename', 'accounts.remove', 'accounts.merge',
   'uid.save', 'uid.read', 'processes.list', 'server.save', 'preferences.save', 'archive.backup',
   'resources.sync', 'upload.send', 'updates.check', 'updates.download', 'updates.cancel', 'updates.install',
-  'affinity.read', 'affinity.load',
+  'affinity.read', 'affinity.load', 'home.summary',
   'roster.read', 'roster.load',
   'calendar.get', 'calendar.refresh',
 ])

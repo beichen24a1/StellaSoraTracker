@@ -6,3 +6,5 @@
 button:focus-visible,a:focus-visible{outline:2px solid var(--primary);outline-offset:3px}@keyframes breathe{50%{opacity:.35}}
 @media(max-width:1150px){.sidebar{width:182px}.page{padding:24px 22px 30px}.metrics-grid{gap:10px}.metric-card{padding:17px 16px}.metric-card>strong{font-size:29px}.metric-card p{font-size:9px}.page-heading h1{font-size:25px}.category-card{padding:18px}.pool-card>header{flex-wrap:wrap}.theme-options>button{width:175px}.upload-summary{gap:15px;padding:22px}.upload-summary h2{font-size:21px}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+/* Keep all feature links reachable in short desktop windows. */
+.sidebar nav{min-height:0;overflow-y:auto;flex-shrink:1;scrollbar-width:thin;margin-bottom:18px}.sidebar .brand,.sidebar-note,.sidebar-foot,.nav-caption{flex-shrink:0}

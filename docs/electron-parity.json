@@ -106,6 +106,14 @@
       "属性/词条/天赋名称取自游戏配置表并支持翻译",
       "按 UID 独立存档",
       "不混入招募归档与好感度文件"
+    ],
+    "home": [
+      "默认主页与独立招募总览",
+      "当前账号摘要与近期五星",
+      "角色与好感度缓存摘要",
+      "活动日历缓存与功能入口",
+      "不自动读游戏或上传",
+      "切号与迟到请求隔离"
     ]
   },
   "status": "implemented; verification results are recorded in the task and build reports",
@@ -119,14 +127,16 @@
       "tests/test_roster_account_isolation.py",
       "tests/test_official_events.py",
       "tests/test_electron_distribution.py",
-      "existing archive, UID, upload, updater and catalog suites; no Qt dependency"
+      "existing archive, UID, upload, updater and catalog suites; no Qt dependency",
+      "tests/test_dashboard.py"
     ],
     "frontend": [
       "frontend/tests/unit/workflows.test.ts",
       "frontend/tests/unit/version.test.ts",
       "frontend/tests/unit/affinity.test.ts",
       "frontend/tests/unit/roster.test.ts",
-      "frontend/tests/unit/calendar.test.ts"
+      "frontend/tests/unit/calendar.test.ts",
+      "frontend/tests/unit/home.test.ts"
     ],
     "electron": [
       "frontend/tests/e2e/desktop.spec.ts",
@@ -135,7 +145,8 @@
       "frontend/tests/e2e/large-archive.spec.ts",
       "frontend/tests/e2e/affinity.spec.ts",
       "frontend/tests/e2e/calendar.spec.ts",
-      "frontend/tests/e2e/roster.spec.ts"
+      "frontend/tests/e2e/roster.spec.ts",
+      "frontend/tests/e2e/home.spec.ts"
     ],
     "packaging": [
       "tools/pack_electron_local.py",

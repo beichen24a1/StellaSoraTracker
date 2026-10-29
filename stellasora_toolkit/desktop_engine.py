@@ -17,7 +17,7 @@ from .process import find_game_processes
 
 METHODS = frozenset({
     'app.state', 'app.lifecycle', 'app.shutdown', 'records.query', 'records.capture', 'records.import', 'records.export', 'records.share',
-    'affinity.read', 'affinity.load',
+    'affinity.read', 'affinity.load', 'home.summary',
     'roster.read', 'roster.load',
     'calendar.get', 'calendar.refresh',
     'accounts.create', 'accounts.switch', 'accounts.rename', 'accounts.remove', 'accounts.merge',
@@ -40,6 +40,8 @@ class Engine:
             return {**app.state(), 'update': self.updates.state, 'packaged': bool(getattr(sys, 'frozen', False))}
         if method == 'app.lifecycle':
             return {'busy': app.busy, 'update': {'status': self.updates.state['status']}}
+        if method == 'home.summary':
+            return app.home_summary()
         if method == 'app.shutdown':
             if app.busy:
                 raise ValueError('正在保存数据，请稍后关闭')
