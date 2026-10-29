@@ -6,6 +6,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { recoveryHtml } from './recovery.cjs'
 
 const frontendRoot = path.resolve(__dirname, '..')
 const projectRoot = app.isPackaged ? path.dirname(process.execPath) : path.resolve(frontendRoot, '..')
@@ -13,9 +14,17 @@ const appRoot = app.isPackaged ? path.dirname(process.execPath) : projectRoot
 const outputRoot = path.resolve(process.env.STELLA_OUTPUT || path.join(appRoot, 'exports'))
 const assetsRoot = app.isPackaged ? path.join(process.resourcesPath, 'assets') : path.join(projectRoot, 'assets')
 const cacheAssets = path.join(outputRoot, 'assets')
-const profileRoot = process.env.STELLA_PROFILE || path.join(appRoot, app.isPackaged ? '.desktop' : 'build/electron-profile')
-fs.mkdirSync(profileRoot, { recursive: true })
-app.setPath('userData', profileRoot)
+let profileRoot = process.env.STELLA_PROFILE || path.join(appRoot, app.isPackaged ? '.desktop' : 'build/electron-profile')
+let startupError: unknown = null
+try {
+  fs.mkdirSync(profileRoot, { recursive: true })
+  app.setPath('userData', profileRoot)
+} catch (error) {
+  startupError = error
+  profileRoot = path.join(app.getPath('temp'), `StellaSora-Recovery-${process.pid}`)
+  fs.mkdirSync(profileRoot, { recursive: true })
+  app.setPath('userData', profileRoot)
+}
 app.setName(app.isPackaged ? 'StellaSoraTracker' : 'StellaSoraTracker-Dev')
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
 
@@ -33,6 +42,13 @@ let window: BrowserWindow | null = null
 let quitting = false
 let uiReady = false
 let initialState: any = null
+let protocolReady = false
+let closeChecking = false
+let closePrompt: { id: string; reason: 'busy'|'update'|'waiting' } | null = null
+let recoveryWindow: BrowserWindow | null = null
+let recoveryDetails = ''
+let recoveryWorking = false
+let recoverySerial = 0
 
 class EngineClient extends EventEmitter {
   child: ChildProcessWithoutNullStreams | null = null
@@ -72,21 +88,21 @@ class EngineClient extends EventEmitter {
     })
     this.child.stderr.on('data', data => {
       const text = String(data).replace(/https?:\/\/\S+/g, '[服务地址]').slice(0, 2000)
-      fs.appendFileSync(path.join(profileRoot, 'engine.log'), text)
+      try { fs.appendFileSync(path.join(profileRoot, 'engine.log'), text) } catch { console.error(text) }
     })
     const failed = (error: Error) => {
       for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error) }
       this.pending.clear()
       if (!quitting && window && !window.isDestroyed()) window.webContents.send('stella:event', { type: 'event', name: 'engineError', payload: { message: error.message } })
     }
-    this.child.on('error', failed)
+    this.child.on('error', error => { this.child = null; failed(error) })
     this.child.on('exit', code => { this.child = null; if (!quitting) failed(new Error(`后台已退出（${code}），请重新连接`)) })
   }
-  request(method: string, params: Record<string, unknown> = {}): Promise<any> {
+  request(method: string, params: Record<string, unknown> = {}, timeout = 60000): Promise<any> {
     return new Promise((resolve, reject) => {
       if (!this.child || this.child.killed) return reject(new Error('后台未连接，请重新连接'))
       const id = ++this.counter
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('后台响应超时，请检查任务面板')) }, 60000)
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('后台响应超时，请检查任务面板')) }, timeout)
       this.pending.set(id, { resolve, reject, timer })
       this.child.stdin.write(JSON.stringify({ id, method, params })+'\n', error => {
         if (error) { clearTimeout(timer); this.pending.delete(id); reject(error) }
@@ -114,12 +130,21 @@ function trustedSender(event: Electron.IpcMainInvokeEvent) {
 
 ipcMain.handle('stella:request', async (event, method, raw) => {
   trustedSender(event)
-  if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','shell.openCalendarArticle','engine.reconnect','app.loaded'].includes(method))) throw new Error('不支持的操作')
+  if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','shell.openCalendarArticle','engine.reconnect','app.loaded','app.closeRespond'].includes(method))) throw new Error('不支持的操作')
   if (raw !== undefined && (raw === null || Array.isArray(raw) || typeof raw !== 'object')) throw new Error('参数无效')
   const params: Record<string, any> = raw ? { ...(raw as Record<string, any>) } : {}
+  if (method === 'app.closeRespond') {
+    if (!closePrompt || params.id !== closePrompt.id || !['stay', 'logs', 'exit'].includes(params.action)) throw new Error('退出确认已失效')
+    if (params.action === 'exit' && closePrompt.reason !== 'update') throw new Error('请等待当前操作完成')
+    closePrompt = null
+    if (params.action === 'exit') await requestClose(true)
+    return { ok: true }
+  }
   if (method === 'app.loaded') {
     uiReady = true
     window?.show()
+    recoveryWindow?.destroy(); recoveryWindow = null
+    if (closePrompt) window?.webContents.send('stella:event', { type: 'event', name: 'closePrompt', payload: closePrompt })
     if (process.env.STELLA_READY_FILE) fs.writeFileSync(process.env.STELLA_READY_FILE, JSON.stringify({ pid: process.pid, output: outputRoot, profile: profileRoot, packaged: app.isPackaged }))
     return { ok: true }
   }
@@ -197,8 +222,98 @@ async function serveFile(target: string) {
   }
 }
 
+function issueClosePrompt(reason: 'busy'|'update'|'waiting') {
+  closePrompt = { id: randomUUID(), reason }
+  window?.webContents.send('stella:event', { type: 'event', name: 'closePrompt', payload: closePrompt })
+  window?.show(); window?.focus()
+}
+
+async function requestClose(stopDownload = false) {
+  if (quitting || closeChecking) return
+  if (closePrompt && !stopDownload) {
+    window?.webContents.send('stella:event', { type: 'event', name: 'closePrompt', payload: closePrompt })
+    return
+  }
+  closeChecking = true
+  try {
+    const state = await engine.request('app.lifecycle', {}, 3000)
+    if (state.busy) { issueClosePrompt('busy'); return }
+    if (['downloading', 'verifying'].includes(state.update?.status) && !stopDownload) { issueClosePrompt('update'); return }
+    await engine.request('app.shutdown')
+    quitting = true; app.quit()
+  } catch {
+    if (engine.child) issueClosePrompt('waiting')
+    else { quitting = true; app.quit() }
+  } finally { closeChecking = false }
+}
+
+function recoveryDark() {
+  try {
+    const prefs = JSON.parse(fs.readFileSync(path.join(outputRoot, 'ui_settings.json'), 'utf8'))
+    return prefs.color_mode === 'dark' || (!prefs.color_mode && prefs.theme === 'orbit')
+  } catch { return nativeTheme.shouldUseDarkColors }
+}
+
+async function showRecovery(error: unknown) {
+  if (quitting) return
+  const serial = ++recoverySerial
+  const detail = String(error).replace(/https?:\/\/\S+/g, '[服务地址]').slice(0, 12000)
+  recoveryDetails = `星塔旅人 ${app.getVersion()}\n${new Date().toISOString()}\n\n${detail}\n\n日志目录：${profileRoot}`
+  try { fs.writeFileSync(path.join(profileRoot, 'startup-error.log'), recoveryDetails, 'utf8') } catch { /* The standalone page still shows the details. */ }
+  const dark = recoveryDark()
+  const oldRecovery = recoveryWindow
+  const oldWindow = window
+  const current = new BrowserWindow({ width: 740, height: 550, minWidth: 600, minHeight: 480, frame: false, show: false,
+    title: '星塔旅人 · 启动未完成', backgroundColor: dark ? '#10151c' : '#f2f7fb', icon: path.join(assetsRoot, 'app_icon.ico'),
+    webPreferences: { preload: path.join(__dirname, 'recovery-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true } })
+  recoveryWindow = current
+  window = null
+  oldWindow?.destroy(); oldRecovery?.destroy()
+  current.setMenuBarVisibility(false)
+  current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  current.webContents.on('will-navigate', event => event.preventDefault())
+  current.on('close', event => {
+    if (quitting) return
+    event.preventDefault()
+    void recoveryAction('close').then(result => { if (!current.isDestroyed()) current.webContents.send('stella:recovery-status', result.message || '') })
+  })
+  try { await current.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(recoveryHtml(recoveryDetails, dark))) }
+  catch (error) { if (serial !== recoverySerial) return; throw error }
+  if (serial !== recoverySerial || current.isDestroyed()) return
+  current.show(); current.focus()
+}
+
+async function recoveryAction(action: string): Promise<{ message?: string }> {
+  if (recoveryWorking) return { message: '正在处理，请稍后…' }
+  recoveryWorking = true
+  try { return await performRecoveryAction(action) }
+  finally { recoveryWorking = false }
+}
+async function performRecoveryAction(action: string): Promise<{ message?: string }> {
+  if (action === 'copy') { clipboard.writeText(recoveryDetails); return { message: '错误详情已复制' } }
+  if (action === 'logs') {
+    const error = await shell.openPath(profileRoot)
+    return { message: error ? '暂时无法打开日志目录，请复制详情反馈' : '已打开日志目录' }
+  }
+  if (action === 'retry') {
+    try { await createWindow(); return {} }
+    catch (error) { await showRecovery(error); return {} }
+  }
+  if (action === 'close') {
+    try { if (engine.child) await engine.request('app.shutdown', {}, 40000) }
+    catch { if (engine.child) return { message: '后台仍在结束操作，请稍后再关闭' } }
+    quitting = true; app.quit(); return {}
+  }
+  throw new Error('不支持的恢复操作')
+}
+ipcMain.handle('stella:recovery', (event, action) => {
+  if (!recoveryWindow || event.sender !== recoveryWindow.webContents || event.senderFrame !== event.sender.mainFrame
+      || typeof action !== 'string' || !['copy', 'logs', 'retry', 'close'].includes(action)) throw new Error('不受信任的恢复操作')
+  return recoveryAction(action)
+})
+
 async function createWindow() {
-  protocol.handle('app', request => {
+  if (!protocolReady) protocol.handle('app', request => {
     const address = new URL(request.url)
     const relative = decodeURIComponent(address.pathname).replace(/^\/+/, '')
     let root: string
@@ -218,10 +333,22 @@ async function createWindow() {
     } else return new Response('Not found', { status: 404 })
     return serveFile(target)
   })
-  engine.start()
+  protocolReady = true
+  if (!engine.child) engine.start()
+  uiReady = false
   window = new BrowserWindow({ width: 1360, height: 900, minWidth: 960, minHeight: 680, show: false,
     title: '星塔旅人 · 招募档案'+(app.isPackaged ? '' : ' · Electron 预览'), icon: path.join(assetsRoot, 'app_icon.ico'), backgroundColor: '#f3f7fa',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } })
+  const created = window
+  const startupTimer = setTimeout(() => {
+    if (!quitting && window === created && !uiReady && !created.isDestroyed()) {
+      void showRecovery(new Error('界面初始化未完成，请查看日志或重试启动')).catch(error => { console.error(error); app.exit(1) })
+    }
+  }, 30000)
+  created.once('closed', () => clearTimeout(startupTimer))
+  created.webContents.on('render-process-gone', (_event, detail) => {
+    if (!quitting && window === created) void showRecovery(new Error(`界面进程意外退出（${detail.reason}）`)).catch(error => { console.error(error); app.exit(1) })
+  })
   window.setMenuBarVisibility(false)
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event, address) => {
@@ -229,29 +356,11 @@ async function createWindow() {
     if (!address.startsWith('app://ui/') && !(devUrl && address.startsWith(devUrl))) event.preventDefault()
   })
   window.webContents.on('page-title-updated', event => { event.preventDefault(); window?.setTitle('星塔旅人 · 招募档案'+(app.isPackaged ? '' : ' · Electron 预览')) })
-  window.once('ready-to-show', () => { if (uiReady) window?.show(); else setTimeout(() => window?.show(), 8000) })
+  window.once('ready-to-show', () => { if (uiReady) created.show(); else setTimeout(() => { if (!created.isDestroyed()) created.show() }, 8000) })
   window.on('close', event => {
     if (quitting) return
     event.preventDefault()
-    void (async () => {
-      try {
-        const state = await engine.request('app.lifecycle')
-        if (state.busy) {
-          await dialog.showMessageBox(window!, { type: 'info', message: '正在完成当前操作，请稍后关闭。' }); return
-        }
-        if (['downloading', 'verifying'].includes(state.update?.status)) {
-          const result = await dialog.showMessageBox(window!, { type: 'question', buttons: ['继续下载', '停止并退出'], defaultId: 0, cancelId: 0, message: '退出将停止未完成的更新下载。' })
-          if (result.response === 0) return
-        }
-        await engine.request('app.shutdown')
-      } catch {
-        if (engine.child) {
-          await dialog.showMessageBox(window!, { type: 'info', message: '后台正在结束当前操作，请稍后再关闭。' })
-          return
-        }
-      }
-      quitting = true; app.quit()
-    })()
+    void requestClose()
   })
   const devUrl = !app.isPackaged ? process.env.VITE_DEV_SERVER_URL : undefined
   await window.loadURL(devUrl || 'app://ui/index.html')
@@ -260,10 +369,14 @@ async function createWindow() {
 const instance = app.requestSingleInstanceLock({ output: outputRoot })
 if (!instance) app.quit()
 else {
-  app.on('second-instance', () => { window?.show(); window?.focus() })
-  app.whenReady().then(createWindow).catch(error => {
-    console.error(error); dialog.showErrorBox('启动失败', String(error)); app.quit()
+  app.on('second-instance', () => { const current = recoveryWindow || window; current?.show(); current?.focus() })
+  app.whenReady().then(() => startupError ? showRecovery(startupError) : createWindow()).catch(error => {
+    console.error(error); void showRecovery(error).catch(fatal => { console.error(fatal); app.exit(1) })
   })
 }
+for (const name of ['uncaughtException', 'unhandledRejection'] as const) process.on(name, error => {
+  console.error(error)
+  if (!quitting) void app.whenReady().then(() => showRecovery(error)).catch(fatal => { console.error(fatal); app.exit(1) })
+})
 app.on('before-quit', () => { quitting = true; engine.child?.stdin.end() })
 app.on('window-all-closed', () => app.quit())

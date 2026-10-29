@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '../components/AppDialog.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { ReloadOutlined, StarFilled, IdcardOutlined } from '@ant-design/icons-vue'
 import { useAppStore } from '../store'
@@ -184,7 +185,7 @@ watch(() => JSON.stringify([store.state?.activeAccount, store.state?.accounts.fi
       </article>
     </div>
 
-    <a-modal v-model:open="detailOpen" :footer="null" :width="720" transition-name="stella-dialog"
+    <AppDialog v-model:open="detailOpen" :footer="null" variant="detail" :width="720" transition-name="stella-dialog"
              mask-transition-name="stella-mask" centered
              :title="detail ? `${detail.name} · Lv.${detail.level} · 突破 ${detail.advance}` : '角色详情'">
       <div v-if="detail" class="detail-modal">
@@ -228,9 +229,9 @@ watch(() => JSON.stringify([store.state?.activeAccount, store.state?.accounts.fi
           </div>
         </template>
       </div>
-    </a-modal>
+    </AppDialog>
 
-    <a-modal v-model:open="emblemOpen" :footer="null" :width="560" transition-name="stella-dialog"
+    <AppDialog v-model:open="emblemOpen" :footer="null" variant="detail" :width="560" transition-name="stella-dialog"
              mask-transition-name="stella-mask" centered
              :title="emblemDetail ? `${emblemDetail.emblem.name} · ${emblemDetail.emblem.typeName}` : '纹章详情'">
       <div v-if="emblemDetail" class="detail-modal">
@@ -250,7 +251,7 @@ watch(() => JSON.stringify([store.state?.activeAccount, store.state?.accounts.fi
           </span>
         </div>
       </div>
-    </a-modal>
+    </AppDialog>
   </section>
 </template>
 

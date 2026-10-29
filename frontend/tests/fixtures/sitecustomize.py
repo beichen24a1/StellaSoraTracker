@@ -5,6 +5,17 @@ import time
 import sys
 from pathlib import Path
 
+if os.environ.get('STELLA_E2E_CLOSE') == '1':
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    from stellasora_toolkit.application import Application
+    def lifecycle(self, update_status):
+        case = self.output/'close-case.txt'
+        value = case.read_text('utf-8') if case.exists() else 'ready'
+        if value == 'waiting':
+            raise ValueError('后台暂未响应（验收场景）')
+        return {'busy': value == 'busy', 'update': {'status': 'downloading' if value == 'update' else 'idle'}}
+    Application.lifecycle = lifecycle
+
 if os.environ.get('STELLA_E2E_UPDATES') == '1':
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
     from stellasora_toolkit import app_updater

@@ -6,6 +6,9 @@ import { AppstoreOutlined, ProfileOutlined, SettingOutlined, CloudUploadOutlined
 import { useAppStore } from './store'
 import TasksDrawer from './components/TasksDrawer.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
+import AppDialog from './components/AppDialog.vue'
+import CloseDialog from './components/CloseDialog.vue'
+import FeedbackHost from './components/FeedbackHost.vue'
 const store = useAppStore()
 const route = useRoute()
 const navigation = [
@@ -50,10 +53,12 @@ onUnmounted(() => store.dispose())
       </div>
       <TasksDrawer/>
       <UpdateDialog/>
-      <a-modal v-model:open="store.processDialog" transition-name="stella-dialog" mask-transition-name="stella-mask" title="选择游戏客户端" ok-text="开始读取" cancel-text="取消" @ok="store.startProcess()">
+      <AppDialog v-model:open="store.processDialog" title="选择游戏客户端" variant="form" subtitle="选择本次要读取的游戏实例" ok-text="开始读取" cancel-text="取消" @ok="store.startProcess()">
         <p class="muted">请选择本次读取的具体实例。</p>
         <a-radio-group v-model:value="store.selectedPid" class="process-list"><a-radio v-for="process in store.processes" :key="process.pid" :value="process.pid"><strong>{{ process.name }} · PID {{ process.pid }}</strong><small>{{ process.path || '路径不可用' }}</small></a-radio></a-radio-group>
-      </a-modal>
+      </AppDialog>
+      <CloseDialog/>
+      <FeedbackHost/>
     </div>
   </a-config-provider>
 </template>

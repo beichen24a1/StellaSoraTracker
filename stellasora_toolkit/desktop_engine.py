@@ -39,7 +39,7 @@ class Engine:
         if method == 'app.state':
             return {**app.state(), 'update': self.updates.state, 'packaged': bool(getattr(sys, 'frozen', False))}
         if method == 'app.lifecycle':
-            return {'busy': app.busy, 'update': {'status': self.updates.state['status']}}
+            return app.lifecycle(self.updates.state['status'])
         if method == 'home.summary':
             return app.home_summary()
         if method == 'app.shutdown':

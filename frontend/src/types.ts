@@ -11,6 +11,7 @@ export interface Pull { itemId: number; name: string; kind: string; time: number
 export interface Pool { gid: number; name: string; category: string; pulls: number; five: number; activity: boolean; start: string; end: string; lastTime: number; well: boolean; entries: Pull[]; entriesTotal?: number }
 export interface QueryResult { items: (RecordRow | Pool)[]; total: number; page: number; pageSize: number }
 export interface EngineEvent { type: 'event'; name: string; payload: any }
+export interface ClosePrompt { id: string; reason: 'busy'|'update'|'waiting' }
 export interface ImportFile { token: string; name: string }
 export interface AffinityEntry { id: number; name: string; level: number; exp: number; need: number; ratio: number; favorite: boolean }
 export interface RosterEmblemAttr { attrId: number; value: number; cfgValue: number; name: string }
