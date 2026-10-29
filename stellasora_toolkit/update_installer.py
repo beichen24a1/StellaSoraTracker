@@ -673,9 +673,13 @@ def schedule_self_cleanup(helper_dir: Path | None) -> None:
         log(f'程序已更新并启动；临时更新器目录留待下次清理：{error}')
 
 
-def show_error(message: str) -> None:
+def show_error(message: str, *, settings_path: Path | None = None) -> None:
     if os.name == "nt":
-        ctypes.windll.user32.MessageBoxW(None, message, "星塔旅人数据工具更新失败", 0x10)
+        from .failure_window import show_failure
+        try:
+            show_failure(message, log_path=_log_path(), settings_path=settings_path)
+        except Exception as error:
+            log(f'无法显示故障详情窗口，错误信息仍保留在日志中：{error}')
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -719,7 +723,8 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as rollback_error:
                 log(f'回滚未完成，旧程序备份位于 {work_dir}: {rollback_error}')
         log(f"更新失败：{type(error).__name__}: {error}")
-        show_error(f"自动更新未完成，原程序文件已尽量恢复。\n\n{error}\n\n日志：{_log_path()}")
+        show_error(f"自动更新未完成，原程序文件已尽量恢复。\n\n{error}\n\n日志：{_log_path()}",
+                   settings_path=Path(os.environ.get('STELLA_OUTPUT', str(args.target_dir/'exports')))/'ui_settings.json')
         return 1
 
 

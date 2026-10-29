@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { message } from 'ant-design-vue'
-import type { AppState, Task, UpdateState, Preferences, EngineEvent, ImportFile, AffinityEntry, RosterCharacter } from './types'
+import { message } from './feedback'
+import type { AppState, Task, UpdateState, Preferences, EngineEvent, ImportFile, AffinityEntry, RosterCharacter, ClosePrompt } from './types'
 
 export const useAppStore = defineStore('app', () => {
   const state = ref<AppState | null>(null)
@@ -9,6 +9,7 @@ export const useAppStore = defineStore('app', () => {
   const loading = ref(false)
   const tasks = ref<Task[]>([])
   const taskDrawer = ref(false)
+  const closePrompt = ref<ClosePrompt | null>(null)
   const updateOpen = ref(false)
   const update = ref<UpdateState>({ status: 'idle' })
   const processes = ref<{ name: string; pid: number; path: string }[]>([])
@@ -57,6 +58,7 @@ export const useAppStore = defineStore('app', () => {
     refreshTimer = setTimeout(() => void refresh(), 80)
   }
   function event(value: EngineEvent) {
+    if (value.name === 'closePrompt') closePrompt.value = value.payload
     if (value.name === 'task') {
       const task = value.payload as Task
       const index = tasks.value.findIndex(item => item.id === task.id)
@@ -210,7 +212,7 @@ export const useAppStore = defineStore('app', () => {
     if (selected) await invoke('records.export', { token: selected.token })
   }
   function dispose() { unsub?.(); clearTimeout(refreshTimer) }
-  return { state, error, loading, tasks, taskDrawer, update, updateOpen, processes, processDialog, selectedPid, processAction, lastOperation,
+  return { state, error, loading, tasks, taskDrawer, closePrompt, update, updateOpen, processes, processDialog, selectedPid, processAction, lastOperation,
     recordsFilter, busy, activeTask, colorMode, affinity, affinityUpdated, affinityUid, affinityPath, affinityBusy,
     roster, rosterUpdated, rosterUid, rosterPath, rosterBusy,
     initialize, refresh, invoke, savePreferences, capture, startProcess, importFiles, exportRecords, loadAffinity, loadRoster, dispose }

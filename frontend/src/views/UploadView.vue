@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { message } from 'ant-design-vue'
+import { message } from '../feedback'
 import { CloudUploadOutlined, CopyOutlined, LinkOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
 import { useAppStore } from '../store'
 import { number } from '../format'

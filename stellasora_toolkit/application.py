@@ -229,6 +229,9 @@ class Application:
                 'archivePath': str(service.active_archive_path(self.output)), 'summary': view,
                 'tasks': self.tasks[:50], 'outputPath': str(self.output), 'bindCommand': rem_upload.bind_command_for(view['uid']) if re.fullmatch(r'\d{5,15}', view['uid']) else ''}
 
+    def lifecycle(self, update_status: str):
+        return {'busy': self.busy, 'update': {'status': update_status}}
+
     def home_summary(self):
         with storage_transaction(self.output), self._gate:
             self._view()
