@@ -42,7 +42,17 @@ MIT 授权不包含游戏角色/秘纹图片、游戏商标或其他第三方素
 
 更新界面增加可滚动的更新说明、下载进度/速度/剩余时间、后台下载、取消、重试和稍后安装；已校验的更新包在重启后重新核验再恢复。任务与日志从底部状态栏打开，上传地址和归档原文不进入日志。完整迁移对照见 [功能对照表](docs/electron-parity.json)。
 
-开发环境需要 Node.js 22.12+、Python 3.10+；运行 `python -m pip install -e ".[dev]"` 后，用 `./run.ps1` 构建并打开新客户端。首次会通过 `npm ci` 安装前端依赖。渲染器热更新可另起 `frontend` 中的 `npm run dev`，通过 `VITE_DEV_SERVER_URL` 连接；正式程序只加载本地打包页面。
+### 协作者从源码一键启动（Windows）
+
+1. 电脑首次使用时，安装 [Python 3.10 或更高版本](https://www.python.org/downloads/windows/)（勾选 **Add python.exe to PATH**，保留 Python Launcher）和 [Node.js 22.12 或更高版本](https://nodejs.org/zh-cn/download)（建议官网 LTS，保持默认选项）。安装完成后重新打开文件夹。
+2. 克隆本仓库，或在 GitHub 点击 **Code → Download ZIP**，将源码**完整解压**到有写权限的文件夹。
+3. 双击根目录的 [`从源码启动.cmd`](从源码启动.cmd)。首次会自动创建本仓库的 `.venv`、安装 Python 和界面依赖、准备 Electron，再构建当前界面并打开。首次需要联网，下载可能需要几分钟；成功后再次双击会复用依赖，更新源码后也会重新构建界面。
+
+不用手动执行 pip、npm 或激活虚拟环境，也不用预先下载发行包。缺少运行环境或安装失败时会保留窗口并显示处理步骤，恢复网络后可重新双击重试。首次 Electron 下载会复用已有的代理环境变量或 Windows 系统代理设置，不修改系统配置。读取游戏若提示权限不足，右键该入口选择「以管理员身份运行」。可右键入口选择「发送到 → 桌面快捷方式」；快捷方式使用后不要移动源码文件夹。
+
+源码版使用独立的 `build/electron-preview-profile` 窗口配置，归档默认保存在本仓库的 `exports`；程序会显示「Electron 预览」。后续更新源码时请保留 `exports`，不要用别人的归档覆盖自己的数据。
+
+命令行也可执行 `./run.ps1`，使用同一套自动准备流程。渲染器热更新可另起 `frontend` 中的 `npm run dev`，通过 `VITE_DEV_SERVER_URL` 连接；正式程序只加载本地打包页面。制作本地 ZIP 需要额外安装构建依赖：`./.venv/Scripts/python.exe -m pip install -e ".[dev]"`。
 
 本地验收构建：`./build_electron.ps1`（或 `./build_release.ps1`），输出 `release/StellaSoraGachaTool-Electron-local-win64.zip`，不会更新正式版本号、发布清单或 tag。包内自带 Python 核心和 Electron 运行时，**不需要用户安装 Python，也不携带 PySide6 界面运行库**。主程序清单要求管理员权限：双击 `StellaSoraGachaTool.exe` 会弹出一次 UAC，确认后直接可用；数据仍在程序旁的 `exports`。
 
