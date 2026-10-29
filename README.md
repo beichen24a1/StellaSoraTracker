@@ -65,9 +65,9 @@ b4 增加旧安装权限修复和提权重启兼容：权限修复只处理本�
 
 ### 已发布版本
 
-当前公开测试版为 [1.3.0.bata4](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata4)，下载 `StellaSoraGachaTool-1.3.0.bata4-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 EXE。[b4 更新说明](docs/releases/v1.3.0.bata4.md)、[b3 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata3)、[b2 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata2)、[b1 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata1) 和原有[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 分别保留。
+当前公开测试版为 [1.3.0.bata5](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata5)，下载 `StellaSoraGachaTool-1.3.0.bata5-win64.zip`，完整解压后运行 `StellaSoraGachaTool.exe`，无需安装 Python。升级前备份整个 `exports`；不要只复制单个 EXE。[b5 更新说明](docs/releases/v1.3.0.bata5.md)、[b4 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata4)、[b3 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata3)、[b2 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata2)、[b1 历史版](https://github.com/beichen24a1/StellaSoraTracker/releases/tag/v1.3.0.bata1) 和原有[稳定版入口](https://github.com/beichen24a1/StellaSoraTracker/releases/latest) 分别保留。
 
-已撤下 `1.3.2`、`1.3.3.bata1` 的公开发行入口；好感度和更新可靠性修复已纳入后续测试版，测试更新清单指向 b4，稳定更新清单继续保留原有稳定资产。撤下版本的数字高于 `1.3.0.bata4`，使用这些版本的用户需要完整解压 b4 到新目录，再复制旧 `exports`，自动检查不会将较低数字识别为新版。
+已撤下 `1.3.2`、`1.3.3.bata1` 的公开发行入口；好感度和更新可靠性修复已纳入后续测试版，测试更新清单指向 b5，稳定更新清单继续保留原有稳定资产。撤下版本的数字高于 `1.3.0.bata5`，使用这些版本的用户需要完整解压 b5 到新目录，再复制旧 `exports`，自动检查不会将较低数字识别为新版。
 
 发行形式继续只提供 Windows 免安装 ZIP，不另外提供安装向导版。
 
