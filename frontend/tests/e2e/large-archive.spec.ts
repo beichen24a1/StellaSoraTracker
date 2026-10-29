@@ -24,6 +24,7 @@ test('100,000 records stay paged and searchable in a responsive Electron window'
   })
   const page = await desktop.firstWindow()
   try {
+    await page.getByRole('link', { name: '招募总览', exact: true }).click()
     await expect(page.locator('.metric-card').first()).toContainText('100,000', { timeout: 30000 })
     await page.getByRole('link', { name: '招募记录', exact: true }).click()
     await page.getByText('全部记录', { exact: true }).click()

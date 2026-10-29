@@ -14,6 +14,7 @@ test('extracted package uses frozen Python core without Python or Node on PATH',
   const desktop=await electron.launch({executablePath:executable,args:['--no-sandbox'],cwd:root,env})
   try{
     const page=await desktop.firstWindow()
+    await page.getByRole('link',{name:'招募总览',exact:true}).click()
     await expect(page.locator('.metric-card').first()).toContainText('2')
     const state=await page.evaluate(()=>window.stella.request('app.state'))
     expect(state.packaged).toBe(true);expect(state.summary.pulls).toBe(2)

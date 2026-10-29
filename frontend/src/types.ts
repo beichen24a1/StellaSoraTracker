@@ -21,5 +21,7 @@ export interface RosterSlot { slot: number; name: string; unlockLevel: number }
 export interface RosterCharacter { id: number; name: string; level: number; advance: number; favorite: boolean; skills: number[]; talent: RosterTalent; emblems: RosterEmblem[]; slots: RosterSlot[]; potentials: Record<string, string[]> }
 export interface CalendarEntry { id: number; name: string; title: string; kind: 'version' | 'event' | 'permanent' | 'recruit'; startAt: number; endAt: number; startApproximate: boolean; description: string; cover: string; url: string }
 export interface CalendarSnapshot { items: CalendarEntry[]; updatedAt: number; loading: boolean; stale: boolean; error: string; offline: boolean; source: string; sourceUrl: string }
+export interface CachedSummary { available: boolean; count: number; highestLevel: number; updatedAt: string; portraits: { id: number; name: string; level: number }[]; emblems: number; error?: string }
+export interface HomeSummary { accountKey: string; uid: string; roster: CachedSummary; affinity: CachedSummary; recentFive: Pick<RecordRow, 'key'|'name'|'kind'|'itemId'|'time'|'poolName'|'result'>[] }
 export interface DesktopAPI { request<T=any>(method: string, params?: Record<string, unknown>): Promise<T>; onEvent(callback: (event: EngineEvent) => void): () => void }
 declare global { interface Window { stella: DesktopAPI } }

@@ -26,6 +26,7 @@ test('real Python engine, all five pages, two themes and account safety', async 
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   try {
+    await page.getByRole('link', { name: '招募总览', exact: true }).click()
     await expect(page.getByRole('heading', { name: '每一次相遇，都有记录。' })).toBeVisible()
     await expect(page.locator('.metric-card').first()).toContainText('8')
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
