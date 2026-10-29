@@ -22,7 +22,11 @@ test('roster follows account switches outside its route and never borrows anothe
     fs.writeFileSync(path.join(output, `${uid}_roster.json`), JSON.stringify({ version: 1, uid, updatedAt: new Date().toISOString(), characters: [
       { id: 130, name: `${labels[index]}的多娜`, level: 90 - index * 10, advance: 8, favorite: true,
         // Old/incomplete nested cache fields must be normalized before rendering dialogs.
-        skills: [1, 1, 10, 8, 1], potentials: [1], emblems: [{ slot: 1, name: '旧缓存纹章', active: true }] },
+        skills: [1, 1, 10, 8, 1], potentials: [1], emblems: [
+          { slot: 1, name: '保卫者尖章', icon: 'Equipment/103/103', desc: '闪烁着守护力量的尖章，是旅人完成过帝国卫队委托的优秀证明。', active: true,
+            attrs: [{ attrId: 804, value: 0.15, cfgValue: 1500, name: '暴击率' }] },
+          { slot: 2, name: '旧缓存纹章', active: true },
+        ] },
     ] }))
   }
   const protectedFiles = uids.map(uid => `${uid}.json`).concat(uids.slice(0, 2).map(uid => `${uid}_roster.json`))
@@ -41,6 +45,17 @@ test('roster follows account switches outside its route and never borrows anothe
     await expect(page.locator('.roster-card')).toContainText('账号 A的多娜')
     await page.locator('.roster-card .card-head').click()
     await expect(page.getByRole('dialog')).toContainText('旧缓存纹章')
+    await expect(page.getByRole('dialog')).toContainText('暴击率 15%')
+    await expect(page.getByRole('dialog')).not.toContainText('闪烁着守护力量')
+    const thumb = page.getByRole('dialog').locator('.emblem-thumbnail img')
+    await expect(thumb).toHaveAttribute('src', 'app://assets/emblems/301.png')
+    await expect.poll(() => thumb.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0)
+    await page.screenshot({ path: path.join(base, 'roster-emblem-thumbnails-light.png'), animations: 'disabled' })
+    await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+    await page.locator('.roster-card .slot').first().click()
+    await expect(page.getByRole('dialog')).toContainText('保卫者尖章')
+    await expect(page.getByRole('dialog')).not.toContainText('闪烁着守护力量')
+    await expect.poll(() => page.getByRole('dialog').locator('.emblem-thumbnail img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0)
     await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
     async function switchTo(index: number) {
       await page.getByRole('link', { name: '数据与设置', exact: true }).click()

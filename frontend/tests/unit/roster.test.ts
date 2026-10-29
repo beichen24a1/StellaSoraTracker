@@ -5,6 +5,7 @@ import Antd from 'ant-design-vue'
 import { useAppStore } from '../../src/store'
 import type { AppState, EngineEvent } from '../../src/types'
 import RosterView from '../../src/views/RosterView.vue'
+import EmblemThumbnail from '../../src/components/EmblemThumbnail.vue'
 
 let request: ReturnType<typeof vi.fn>
 let wrappers: ReturnType<typeof mount>[]
@@ -192,6 +193,8 @@ describe('roster page', () => {
     expect(document.querySelectorAll('.detail-modal .emblem.equipped')).toHaveLength(1)
     expect(bodyText).toContain('装备中')
     expect(bodyText).toContain('虔信者尖章·备用')
+    expect(bodyText).not.toContain('闪烁着虔诚力量')
+    expect(document.querySelector('.emblem-thumbnail img')?.getAttribute('src')).toBe('app://assets/emblems/101.png')
   })
 
   it('reads from the game when the refresh button is pressed', async () => {
@@ -227,6 +230,20 @@ describe('roster page', () => {
     const bodyText = document.body.textContent || ''
     expect(bodyText).toContain('虔信者尖章')
     expect(bodyText).toContain('暴击伤害')
+    expect(bodyText).not.toContain('闪烁着虔诚力量')
+  })
+
+  it('matches emblem artwork by the game icon, and handles unknown or missing images locally', async () => {
+    const view = mount(EmblemThumbnail, { props: { emblem: { name: '保卫者尖章', icon: 'Equipment/103/103' } } })
+    wrappers.push(view)
+    expect(view.get('img').attributes('src')).toBe('app://assets/emblems/301.png')
+    await view.get('img').trigger('error')
+    expect(view.find('img').exists()).toBe(false)
+    await view.setProps({ emblem: { name: '虔信者方菱章', icon: '' } })
+    expect(view.get('img').attributes('src')).toBe('app://assets/emblems/102.png')
+    await view.setProps({ emblem: { name: '未收录纹章', icon: 'https://example.com/private.png' } })
+    expect(view.find('img').exists()).toBe(false)
+    expect(view.find('.emblem-placeholder').exists()).toBe(true)
   })
 
   it('renders an empty state before the first read', async () => {

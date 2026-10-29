@@ -8,3 +8,13 @@
 @media(max-width:1200px){.home-grid{grid-template-columns:minmax(0,1fr) 270px;gap:15px}.home-collections{gap:14px}.home-collection{padding:17px 14px 0}.home-stats>a{padding:0 17px}.home-portraits{gap:7px}.home-collection footer{flex-wrap:wrap}.home-section-head{padding:18px 18px 0}.home-shortcuts{gap:10px}.home-shortcuts>a{padding:15px 13px}.home-shortcuts small{font-size:9px}}
 @media(max-width:1050px){.home-grid{grid-template-columns:1fr}.home-events{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.home-events>.home-section-head,.home-events>footer{grid-column:1/-1}.home-event-cover{margin-bottom:18px;min-height:180px}.home-event-list{padding-top:8px}.home-event-empty{grid-column:1/-1;padding:25px}.home-stats strong{font-size:27px}.home-stats>a{padding:0 14px}.home-shortcuts{grid-template-columns:1fr}.home-shortcuts>a{padding:14px 18px}.home-shortcuts>a>span{display:flex;align-items:center;gap:18px}.home-shortcuts small{margin:0}.home-collection footer{flex-wrap:nowrap}}
 @media(prefers-reduced-motion:reduce){.home-event-cover>img,.home-shortcuts>a{transition:none}.home-shortcuts>a:hover{transform:none}}
+
+/* Stretch the existing navigation link over each summary, keeping inline actions independent. */
+.home-navigable{position:relative;isolation:isolate;transition:border-color .18s ease,box-shadow .18s ease}
+.home-navigable:hover{border-color:var(--primary)}
+.home-card-link::after{content:"";position:absolute;inset:0;z-index:1;border-radius:12px;cursor:pointer}
+.home-card-link:focus-visible{outline:none}
+.home-card-link:focus-visible::after{outline:2px solid var(--primary);outline-offset:-3px}
+.home-empty-actions>.ant-btn{position:relative;z-index:2}
+.home-events:hover .home-event-cover>img{transform:scale(1.03)}
+@media(prefers-reduced-motion:reduce){.home-navigable{transition:none}.home-events:hover .home-event-cover>img{transform:none}}

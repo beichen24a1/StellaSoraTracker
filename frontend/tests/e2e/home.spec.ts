@@ -37,6 +37,19 @@ test('home summarizes real cached modules and preserves navigation, themes and a
     await expect(page.locator('.home-stats>a').filter({ hasText: '最高好感度' })).toContainText('65')
     await expect(page.locator('.home-five-item')).toHaveCount(2)
     await expect(page.locator('.home-event-cover')).toContainText('星塔周年活动')
+    // Click titles and blank card areas, not only the small footer links.
+    for (const [selector, heading] of [
+      ['.home-recent', '招募记录'], ['.home-collection[data-kind=roster]', '角色数据'],
+      ['.home-collection[data-kind=affinity]', '好感度'], ['.home-events', '活动日历'],
+    ]) {
+      await page.locator(selector!).click({ position: { x: 8, y: 8 } })
+      await expect(page.getByRole('heading', { name: heading!, exact: true })).toBeVisible()
+      await page.getByRole('link', { name: '主页', exact: true }).click()
+    }
+    await page.locator('.home-collection[data-kind=roster] .home-card-link').focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('heading', { name: '角色数据', exact: true })).toBeVisible()
+    await page.getByRole('link', { name: '主页', exact: true }).click()
     await page.screenshot({ path: path.join(base, 'home-light.png'), animations: 'disabled' })
     await page.locator('.home-collection[data-kind=roster] footer a').click()
     await expect(page.getByRole('heading', { name: '角色数据', exact: true })).toBeVisible()
@@ -62,6 +75,14 @@ test('home summarizes real cached modules and preserves navigation, themes and a
     await expect(page.locator('.home-collection[data-kind=affinity]')).toContainText('还没有好感度记录')
     await expect(page.locator('.home-five-item')).toHaveCount(0)
     await expect(page.locator('.home-event-cover')).toContainText('星塔周年活动')
+    // The stretched link must not steal the empty-state capture/import buttons.
+    await desktop.evaluate(({ dialog }) => {
+      ;(dialog as any).__homeImportCount = 0
+      dialog.showOpenDialog = async () => { (dialog as any).__homeImportCount++; return { canceled: true, filePaths: [] } }
+    })
+    await page.locator('.home-empty-actions').getByRole('button', { name: '导入记录', exact: true }).click()
+    await expect.poll(() => desktop.evaluate(({ dialog }) => (dialog as any).__homeImportCount)).toBe(1)
+    await expect(page.getByRole('heading', { name: '主页', exact: true })).toBeVisible()
     expect(errors).toEqual([])
   } finally { await desktop.close() }
 })
