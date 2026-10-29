@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppDialog from '../components/AppDialog.vue'
+import EmblemThumbnail from '../components/EmblemThumbnail.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { ReloadOutlined, StarFilled, IdcardOutlined } from '@ant-design/icons-vue'
 import { useAppStore } from '../store'
@@ -193,21 +194,23 @@ watch(() => JSON.stringify([store.state?.activeAccount, store.state?.accounts.fi
         <p v-if="!detail.emblems.length" class="muted">没有读到纹章，请先在游戏里打开「纹章」界面再读取。</p>
         <div v-for="emblem in detail.emblems" :key="`${emblem.slot}-${emblem.index}`"
              class="emblem" :class="{ equipped: emblem.active }">
-          <div class="emblem-head">
-            <strong>
-              {{ emblem.name }}
-              <em v-if="emblem.active" class="equip-badge">装备中</em>
-            </strong>
-            <span>{{ emblem.typeName }} · 方案{{ emblem.preset }} · 强化 {{ upgradeTotal(emblem) }}</span>
-          </div>
-          <p v-if="emblem.desc">{{ emblem.desc }}</p>
-          <div v-if="emblem.skillAffixes.length || emblem.potentialAffixes.length" class="attrs affix-row">
-            <span v-for="(affix, index) in emblem.skillAffixes" :key="'skill-' + index" class="affix">{{ affix.name }}</span>
-            <span v-for="(affix, index) in emblem.potentialAffixes" :key="'potential-' + index" class="affix">{{ affix.name }}</span>
-          </div>
-          <div class="attrs">
-            <span v-for="(attr, index) in emblem.attrs" :key="index">{{ attrText(attr) }}</span>
-            <span v-if="!emblem.attrs.length && affixNames(emblem).length" class="affix">{{ affixNames(emblem).join(' / ') }}</span>
+          <EmblemThumbnail :emblem="emblem"/>
+          <div class="emblem-content">
+            <div class="emblem-head">
+              <strong>
+                {{ emblem.name }}
+                <em v-if="emblem.active" class="equip-badge">装备中</em>
+              </strong>
+              <span>{{ emblem.typeName }} · 方案{{ emblem.preset }} · 强化 {{ upgradeTotal(emblem) }}</span>
+            </div>
+            <div v-if="emblem.skillAffixes.length || emblem.potentialAffixes.length" class="attrs affix-row">
+              <span v-for="(affix, index) in emblem.skillAffixes" :key="'skill-' + index" class="affix">{{ affix.name }}</span>
+              <span v-for="(affix, index) in emblem.potentialAffixes" :key="'potential-' + index" class="affix">{{ affix.name }}</span>
+            </div>
+            <div class="attrs">
+              <span v-for="(attr, index) in emblem.attrs" :key="index">{{ attrText(attr) }}</span>
+              <span v-if="!emblem.attrs.length && affixNames(emblem).length" class="affix">{{ affixNames(emblem).join(' / ') }}</span>
+            </div>
           </div>
         </div>
 
@@ -235,11 +238,13 @@ watch(() => JSON.stringify([store.state?.activeAccount, store.state?.accounts.fi
              mask-transition-name="stella-mask" centered
              :title="emblemDetail ? `${emblemDetail.emblem.name} · ${emblemDetail.emblem.typeName}` : '纹章详情'">
       <div v-if="emblemDetail" class="detail-modal">
-        <p class="muted">
-          {{ emblemDetail.owner }} · 方案{{ emblemDetail.emblem.preset }} · 强化 {{ upgradeTotal(emblemDetail.emblem) }}
-          <template v-if="emblemDetail.emblem.locked"> · 已锁定</template>
-        </p>
-        <p v-if="emblemDetail.emblem.desc" class="muted">{{ emblemDetail.emblem.desc }}</p>
+        <div class="emblem-detail-heading">
+          <EmblemThumbnail :emblem="emblemDetail.emblem"/>
+          <p class="muted">
+            {{ emblemDetail.owner }} · 方案{{ emblemDetail.emblem.preset }} · 强化 {{ upgradeTotal(emblemDetail.emblem) }}
+            <template v-if="emblemDetail.emblem.locked"> · 已锁定</template>
+          </p>
+        </div>
         <div v-if="emblemDetail.emblem.skillAffixes.length || emblemDetail.emblem.potentialAffixes.length" class="attrs affix-row">
           <span v-for="(affix, index) in emblemDetail.emblem.skillAffixes" :key="'skill-' + index" class="affix">{{ affix.name }}</span>
           <span v-for="(affix, index) in emblemDetail.emblem.potentialAffixes" :key="'potential-' + index" class="affix">{{ affix.name }}</span>
@@ -291,13 +296,15 @@ watch(() => JSON.stringify([store.state?.activeAccount, store.state?.accounts.fi
 .detail-modal{max-height:70vh;overflow:auto;padding-right:4px}
 .detail-modal h3{font-size:12px;margin:0 0 8px;color:var(--text)}
 .detail-modal h3 + h3{margin-top:14px}
-.emblem{padding:8px 10px;border-radius:8px;background:var(--surface-2);margin-bottom:8px;border:1px solid transparent}
+.emblem{display:flex;align-items:flex-start;gap:10px;padding:10px;border-radius:8px;background:var(--surface-2);margin-bottom:8px;border:1px solid transparent}
+.emblem-content{flex:1;min-width:0}
+.emblem-detail-heading{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.emblem-detail-heading p{margin:0;font-size:11px}
 .emblem.equipped{border-color:var(--primary);background:var(--primary-soft)}
 .equip-badge{font-style:normal;font-size:10px;color:#fff;background:var(--primary);border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:1px}
 .emblem-head{display:flex;justify-content:space-between;gap:10px;font-size:11px;flex-wrap:wrap}
 .emblem-head strong{font-size:12px}
 .emblem-head span{color:var(--muted)}
-.emblem p{margin:5px 0 0;font-size:11px;color:var(--muted);line-height:1.5}
 .attrs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .attrs span{font-size:11px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 6px;font-variant-numeric:tabular-nums}
 .attrs .affix{color:var(--muted)}

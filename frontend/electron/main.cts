@@ -319,7 +319,7 @@ async function createWindow() {
     let root: string
     let target: string
     if (address.hostname === 'assets') {
-      if (!/^(?:(?:travelers|discs)\/\d+\.png|app_icon\.(png|ico))$/.test(relative)) return new Response('Not found', { status: 404 })
+      if (!/^(?:(?:travelers|discs|emblems)\/\d+\.png|app_icon\.(png|ico))$/.test(relative)) return new Response('Not found', { status: 404 })
       root = assetsRoot; target = path.join(cacheAssets, relative)
       if (!fs.existsSync(target)) target = path.join(root, relative)
     } else if (address.hostname === 'calendar') {

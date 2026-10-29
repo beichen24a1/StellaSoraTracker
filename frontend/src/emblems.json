@@ -1,0 +1,68 @@
+{
+  "source": "https://stella.ennead.cc/api/emblems?lang=cn",
+  "items": [
+    {
+      "id": 101,
+      "name": "虔信者尖章",
+      "icon": "Equipment/101/101",
+      "source": "https://api.ennead.cc/stella/assets/Icon/Equipment/chargem_a_01.png",
+      "sha256": "a2749723a06b22416716a2db9b98f7b807fd83ac28b1c0786077f5359da7e4cc"
+    },
+    {
+      "id": 102,
+      "name": "虔信者方菱章",
+      "icon": "Equipment/201/201",
+      "source": "https://api.ennead.cc/stella/assets/Icon/Equipment/chargem_b_01.png",
+      "sha256": "d8ea6fb2cb17c22b299c1ad0dbc558cb9d520eccb050c9c7828fcb8cf6296c39"
+    },
+    {
+      "id": 103,
+      "name": "虔信者星闪章",
+      "icon": "Equipment/301/301",
+      "source": "https://api.ennead.cc/stella/assets/Icon/Equipment/chargem_c_01.png",
+      "sha256": "7d9a3a38cbc603cc53043e8a1cc1d4b0afa475e38e2bf43f788c3a401d1f8209"
+    },
+    {
+      "id": 201,
+      "name": "开拓者尖章",
+      "icon": "Equipment/102/102",
+      "source": "https://api.ennead.cc/stella/assets/Icon/Equipment/chargem_a_02.png",
+      "sha256": "a121efd35778bcd9b4124de3df29018ffbad42306f6b398fdfb20139f65b224a"
+    },
+    {
+      "id": 202,
+      "name": "开拓者方菱章",
+      "icon": "Equipment/202/202",
+      "source": "https://api.ennead.cc/stella/assets/Icon/Equipment/chargem_b_02.png",
+      "sha256": "787ce11fab0543078e8b7821f105c32989a1dc788b7afb18521cf65592a8bdeb"
+    },
+    {
+      "id": 203,
+      "name": "开拓者星闪章",
+      "icon": "Equipment/302/302",
+      "source": "https://api.ennead.cc/stella/assets/Icon/Equipment/chargem_c_02.png",
+      "sha256": "65157a96e8469f4500e91076ebc999a970af53ca956e2045558942c16f34a1d5"
+    },
+    {
+      "id": 301,
+      "name": "保卫者尖章",
+      "icon": "Equipment/103/103",
+      "source": "https://api.ennead.cc/stella/assets/Icon/Equipment/chargem_a_03.png",
+      "sha256": "b47050be47385d562ec8bffb01ddb0b52e2bc903427fb6b9741e6e43d879f46c"
+    },
+    {
+      "id": 302,
+      "name": "保卫者方菱章",
+      "icon": "Equipment/203/203",
+      "source": "https://api.ennead.cc/stella/assets/Icon/Equipment/chargem_b_03.png",
+      "sha256": "f1de3ad042a2c16fdf766bd5ccc0c48d93c3a30043bb11f8172d0ecb98f58e65"
+    },
+    {
+      "id": 303,
+      "name": "保卫者星闪章",
+      "icon": "Equipment/303/303",
+      "source": "https://api.ennead.cc/stella/assets/Icon/Equipment/chargem_c_03.png",
+      "sha256": "c197f8e0c71c75684952e497e60649fc1866b2cb7d6bee28875bd9ec241b6602"
+    }
+  ]
+}
