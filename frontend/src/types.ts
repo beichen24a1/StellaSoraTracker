@@ -1,4 +1,4 @@
-export interface Preferences { color_mode: 'light' | 'dark'; auto_upload: boolean; auto_update: boolean; pool_columns: 1 | 2 | null; update_channel: 'stable' | 'beta' }
+export interface Preferences { color_mode: 'light' | 'dark'; auto_upload: boolean; auto_upload_hhmx: boolean; auto_update: boolean; pool_columns: 1 | 2 | null; update_channel: 'stable' | 'beta' }
 export interface Account { key: string; uid: string; name: string; label: string; groups: number }
 export interface Category { key: string; name: string; pulls: number; five: number; pity: number; limit: number; average: number | null }
 export interface Summary { uid: string; pulls: number; five: number; rate: number; average: number | null; groups: number; categories: Category[]; activity: { gid: number; name: string; pulls: number; five_stars: number }[]; firstTime: number; lastTime: number }

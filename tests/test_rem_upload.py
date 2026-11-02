@@ -1,8 +1,10 @@
-"""上传到蕾姆(Rem)的接口回归。
+"""上传到蕾姆(Rem)与 hhmx.cn 的接口回归。
 
-接口语义照搬上游 stellasora_gacha：POST {uid, record}，无鉴权，成功 {"ok": true}，
-首次上传提示一次绑定指令，429 要读 Retry-After。这里用假 urlopen 覆盖各分支。
+两个服务使用同一请求体，POST {uid, record}，无鉴权，成功 {"ok": true}。
+蕾姆首次上传提示绑定指令，429 要读 Retry-After；hhmx.cn 用 FastAPI 的 detail 报错。
+这里用假 urlopen 覆盖各分支。
 """
+import io
 import json
 import shutil
 import sys
@@ -65,6 +67,8 @@ class ValidateRecordTests(UploadCase):
         self.assertNotIn("http://", source)
         self.assertNotIn("https://", source)
         self.assertTrue(rem_upload.UPLOAD_URL.startswith("https://"))
+        self.assertTrue(rem_upload.HHMX_UPLOAD_URL.startswith("https://"))
+        self.assertNotEqual(rem_upload.UPLOAD_URL, rem_upload.HHMX_UPLOAD_URL)
 
     def test_accepts_a_normal_archive(self):
         path = self.write_archive()
@@ -140,6 +144,23 @@ class UploadFileTests(UploadCase):
         self.assertEqual(result.uid, "100872990")
         self.assertEqual(result.bind_command, "星塔抽卡绑定 UID 100872990")
 
+    def test_posts_uid_and_record_to_hhmx_when_endpoint_is_given(self):
+        path = self.write_archive()
+        seen = {}
+
+        def fake_urlopen(request, timeout=0, context=None):
+            seen["url"] = request.full_url
+            seen["body"] = json.loads(request.data.decode("utf-8"))
+            return FakeResponse(json.dumps({"ok": True, "uid": "100872990", "recorded": 2}).encode("utf-8"))
+
+        with mock.patch("stellasora_toolkit.rem_upload.urlopen", fake_urlopen):
+            result = rem_upload.upload_file(path, endpoint=rem_upload.HHMX_UPLOAD_URL)
+
+        self.assertEqual(seen["url"], rem_upload.HHMX_UPLOAD_URL)
+        self.assertEqual(seen["body"]["uid"], "100872990")
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.uid, "100872990")
+
     def test_uses_server_bind_command_when_given(self):
         path = self.write_archive()
 
@@ -161,6 +182,67 @@ class UploadFileTests(UploadCase):
             with self.assertRaises(rem_upload.RemUploadError) as ctx:
                 rem_upload.upload_file(path)
         self.assertIn("Uid already bound", str(ctx.exception))
+
+    def test_fastapi_detail_error_is_reported(self):
+        from urllib.error import HTTPError
+
+        path = self.write_archive()
+        body = json.dumps({"detail": "缺少有效的 uid"}, ensure_ascii=False).encode("utf-8")
+
+        def fake_urlopen(request, timeout=0, context=None):
+            raise HTTPError(rem_upload.HHMX_UPLOAD_URL, 400, "Bad Request",
+                            {"Content-Type": "application/json"}, io.BytesIO(body))
+
+        with mock.patch("stellasora_toolkit.rem_upload.urlopen", fake_urlopen):
+            with self.assertRaises(rem_upload.RemUploadError) as ctx:
+                rem_upload.upload_file(path, endpoint=rem_upload.HHMX_UPLOAD_URL)
+        self.assertIn("缺少有效的 uid", str(ctx.exception))
+
+    def test_detail_error_in_ok_false_payload_is_reported(self):
+        path = self.write_archive()
+
+        def fake_urlopen(request, timeout=0, context=None):
+            return FakeResponse(json.dumps(
+                {"ok": False, "detail": "缺少有效的 uid"}, ensure_ascii=False).encode("utf-8"))
+
+        with mock.patch("stellasora_toolkit.rem_upload.urlopen", fake_urlopen):
+            with self.assertRaises(rem_upload.RemUploadError) as ctx:
+                rem_upload.upload_file(path, endpoint=rem_upload.HHMX_UPLOAD_URL)
+        self.assertIn("缺少有效的 uid", str(ctx.exception))
+
+    def test_structured_detail_error_keeps_the_message(self):
+        from urllib.error import HTTPError
+
+        path = self.write_archive()
+        body = json.dumps({"detail": [
+            {"loc": ["body", "uid"], "msg": "field required", "type": "missing"},
+        ]}).encode("utf-8")
+
+        def fake_urlopen(request, timeout=0, context=None):
+            raise HTTPError(rem_upload.HHMX_UPLOAD_URL, 422, "Unprocessable Entity",
+                            {"Content-Type": "application/json"}, io.BytesIO(body))
+
+        with mock.patch("stellasora_toolkit.rem_upload.urlopen", fake_urlopen):
+            with self.assertRaises(rem_upload.RemUploadError) as ctx:
+                rem_upload.upload_file(path, endpoint=rem_upload.HHMX_UPLOAD_URL)
+        self.assertIn("field required", str(ctx.exception))
+        self.assertIn("分类 6", str(ctx.exception))
+
+    def test_nested_detail_message_is_reported(self):
+        from urllib.error import HTTPError
+
+        path = self.write_archive()
+        body = json.dumps({"detail": {
+            "code": "invalid_uid", "message": "缺少有效的 uid"}}, ensure_ascii=False).encode("utf-8")
+
+        def fake_urlopen(request, timeout=0, context=None):
+            raise HTTPError(rem_upload.HHMX_UPLOAD_URL, 400, "Bad Request",
+                            {"Content-Type": "application/json"}, io.BytesIO(body))
+
+        with mock.patch("stellasora_toolkit.rem_upload.urlopen", fake_urlopen):
+            with self.assertRaises(rem_upload.RemUploadError) as ctx:
+                rem_upload.upload_file(path, endpoint=rem_upload.HHMX_UPLOAD_URL)
+        self.assertIn("缺少有效的 uid", str(ctx.exception))
 
     def test_uid_mismatch_in_response_is_rejected(self):
         path = self.write_archive()

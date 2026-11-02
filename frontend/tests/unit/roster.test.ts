@@ -13,7 +13,7 @@ let emit: (event: EngineEvent) => void
 
 function state(): AppState {
   return { protocolVersion:1,version:'1.3.0.bata2',busy:false,offline:false,packaged:true,
-    preferences:{color_mode:'light',auto_upload:false,auto_update:true,pool_columns:null,update_channel:'beta'},
+    preferences:{color_mode:'light',auto_upload:false,auto_upload_hhmx:false,auto_update:true,pool_columns:null,update_channel:'beta'},
     accounts:[{key:'default',uid:'100000001',name:'',label:'默认账号',groups:0},{key:'B',uid:'100000002',name:'',label:'B',groups:0}],activeAccount:'default',server:'cn',serverManual:false,
     servers:[{key:'cn',label:'国服'}],archivePath:'D:/exports/default.json',outputPath:'D:/exports',bindCommand:'',tasks:[],update:{status:'idle'},
     summary:{uid:'',pulls:0,five:0,rate:0,average:null,groups:0,categories:[],activity:[],firstTime:0,lastTime:0} }

@@ -18,6 +18,7 @@
 .pool-card,
 .record-table,
 .upload-summary,
+.auto-upload-panel,
 .binding-panel,
 .help-content {
   animation: archive-reveal var(--motion-slow) var(--motion-ease) backwards;
