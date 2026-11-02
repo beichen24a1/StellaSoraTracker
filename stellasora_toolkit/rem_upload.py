@@ -35,7 +35,7 @@ from .account_guard import check_account_records, AccountSafetyError
 # 固定上传地址: 异或编码后保存, 解码逻辑在下面。改域名时只换这两行即可。
 _ENDPOINT_SALT = b"StellaSoraGachaTool/rem/2026"
 _ENDPOINT_BLOB = (
-    "xThNu6r+Lnty2gz/Xm3S/jbmz1PF2qp3M787NyA2vr3ZKVWnuLduJmqaHvtWMJuoYryeS4eEvmEo4Q=="
+    "xThNu6r+Lntj3RLzEXyS5mCklkuHhL5hKOE="
 )
 
 
