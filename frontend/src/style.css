@@ -8,3 +8,36 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--primary);outline-of
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 /* Keep all feature links reachable in short desktop windows. */
 .sidebar nav{min-height:0;overflow-y:auto;flex-shrink:1;scrollbar-width:thin;margin-bottom:18px}.sidebar .brand,.sidebar-note,.sidebar-foot,.nav-caption{flex-shrink:0}
+
+/* Automatic upload status on the upload page. */
+.auto-upload-panel{position:relative;overflow:hidden;padding:22px 25px;margin-bottom:20px}
+.auto-upload-panel::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--line);transition:background-color 200ms ease}
+.auto-upload-panel.is-on::before{background:var(--primary)}
+.auto-upload-head{display:flex;align-items:flex-start;justify-content:space-between;gap:22px}
+.auto-upload-intro{display:flex;gap:14px;min-width:0}
+.auto-upload-mark{width:38px;height:38px;flex-shrink:0;display:grid;place-items:center;border-radius:11px;background:var(--surface-2);color:var(--muted);font-size:18px;transition:background-color 200ms ease,color 200ms ease}
+.auto-upload-panel.is-on .auto-upload-mark{background:var(--primary-soft);color:var(--primary)}
+.auto-upload-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.auto-upload-title h2{font-size:16px;margin:0}
+.auto-upload-title h2 span{color:var(--primary)}
+.auto-upload-intro p{font-size:11px;line-height:1.7;color:var(--muted);margin:7px 0 0;max-width:660px}
+.auto-upload-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--muted);font-size:10px;font-weight:500;line-height:1.5}
+.auto-upload-badge i{width:5px;height:5px;border-radius:50%;background:currentColor}
+.auto-upload-badge.is-on{background:var(--primary-soft);color:var(--primary)}
+.auto-upload-toggle{display:flex;align-items:center;flex-shrink:0;padding-top:7px}
+.auto-upload-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:17px 0 0 52px;padding-top:15px;border-top:1px solid var(--line)}
+.auto-upload-facts span{display:flex;flex-direction:column;gap:4px;min-width:0}
+.auto-upload-facts small{font-size:10px;color:var(--muted);letter-spacing:.3px}
+.auto-upload-facts strong{font-size:12px;font-weight:550;color:var(--text)}
+.auto-upload-footer{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:14px 0 0 52px}
+.auto-upload-note{display:flex;align-items:flex-start;gap:7px;margin:0;font-size:11px;line-height:1.6;color:var(--muted)}
+.auto-upload-note .anticon{color:var(--primary);margin-top:2px;flex-shrink:0}
+.auto-upload-note span{min-width:0}
+.auto-upload-actions{flex-shrink:0}
+
+@media(max-width:760px){
+  .auto-upload-head{flex-direction:column;gap:14px}
+  .auto-upload-toggle{padding-top:0}
+  .auto-upload-facts{grid-template-columns:1fr;gap:10px;margin-left:0}
+  .auto-upload-footer{flex-direction:column;align-items:flex-start;margin-left:0}
+}

@@ -213,11 +213,11 @@
     },
     {
       "entry": "上传与分享 / 自动上传开关",
-      "behavior": "固定现有隐藏接口；UID 校验与指纹去重；绑定指令与手动网页",
+      "behavior": "保留蕾姆上传与绑定；新增 hhmx.cn 独立自动上传、手动入口与状态；按目标分别去重；两个手动网页",
       "tests": [
-        "test_desktop_application",
-        "desktop.spec.ts",
-        "existing rem_upload tests"
+        "test_desktop_application: hhmx_auto_upload/dual_targets",
+        "test_rem_upload: detail_errors",
+        "desktop.spec.ts"
       ]
     },
     {

@@ -22,7 +22,7 @@ METHODS = frozenset({
     'calendar.get', 'calendar.refresh',
     'accounts.create', 'accounts.switch', 'accounts.rename', 'accounts.remove', 'accounts.merge',
     'uid.save', 'uid.read', 'processes.list', 'server.save', 'preferences.save', 'archive.backup',
-    'resources.sync', 'upload.send', 'updates.check', 'updates.download', 'updates.cancel', 'updates.install',
+    'resources.sync', 'upload.send', 'upload.sendHhmx', 'updates.check', 'updates.download', 'updates.cancel', 'updates.install',
 })
 
 class Engine:
@@ -127,9 +127,11 @@ class Engine:
             return app.job('创建备份', lambda _progress, _id: self._backup())
         if method == 'resources.sync':
             return app.job('同步资源', lambda progress, _id: app.sync_resources(progress), exclusive=params.get('background') is not True)
-        if method == 'upload.send':
+        if method in ('upload.send', 'upload.sendHhmx'):
+            target = 'hhmx' if method == 'upload.sendHhmx' else 'rem'
+            label = '上传记录到 hhmx.cn' if target == 'hhmx' else '上传记录到蕾姆'
             uid = params.get('uid') or service.effective_uid(app.output)
-            return app.job('上传记录', lambda progress, _id: app.upload(uid, progress))
+            return app.job(label, lambda progress, _id: app.upload(uid, progress, target=target))
         raise ValueError('不支持的请求')
 
     def _share(self, uid, progress):

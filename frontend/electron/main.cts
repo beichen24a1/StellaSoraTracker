@@ -32,7 +32,7 @@ const methods = new Set([
   'app.state', 'records.query', 'records.capture', 'records.import', 'records.export', 'records.share',
   'accounts.create', 'accounts.switch', 'accounts.rename', 'accounts.remove', 'accounts.merge',
   'uid.save', 'uid.read', 'processes.list', 'server.save', 'preferences.save', 'archive.backup',
-  'resources.sync', 'upload.send', 'updates.check', 'updates.download', 'updates.cancel', 'updates.install',
+  'resources.sync', 'upload.send', 'upload.sendHhmx', 'updates.check', 'updates.download', 'updates.cancel', 'updates.install',
   'affinity.read', 'affinity.load', 'home.summary',
   'roster.read', 'roster.load',
   'calendar.get', 'calendar.refresh',
@@ -130,7 +130,7 @@ function trustedSender(event: Electron.IpcMainInvokeEvent) {
 
 ipcMain.handle('stella:request', async (event, method, raw) => {
   trustedSender(event)
-  if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','shell.openCalendarArticle','engine.reconnect','app.loaded','app.closeRespond'].includes(method))) throw new Error('不支持的操作')
+  if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','shell.manualUploadHhmx','shell.openCalendarArticle','engine.reconnect','app.loaded','app.closeRespond'].includes(method))) throw new Error('不支持的操作')
   if (raw !== undefined && (raw === null || Array.isArray(raw) || typeof raw !== 'object')) throw new Error('参数无效')
   const params: Record<string, any> = raw ? { ...(raw as Record<string, any>) } : {}
   if (method === 'app.closeRespond') {
@@ -171,8 +171,10 @@ ipcMain.handle('stella:request', async (event, method, raw) => {
     if (method === 'shell.openExports') {
       const error = await shell.openPath(outputRoot); if (error) throw new Error('无法打开数据目录'); return { ok: true }
     }
-    if (method === 'shell.manualUpload') {
-      const address = 'https://share.fnnas.net/s/8b355174d383436899'
+    if (method === 'shell.manualUpload' || method === 'shell.manualUploadHhmx') {
+      const address = method === 'shell.manualUploadHhmx'
+        ? 'https://hhmx.cn/'
+        : 'https://share.fnnas.net/s/8b355174d383436899'
       clipboard.writeText(address); await shell.openExternal(address); return { ok: true }
     }
     const state = await engine.request('app.state')

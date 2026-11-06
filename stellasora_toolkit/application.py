@@ -23,6 +23,10 @@ from .constants import APP_VERSION, GACHA_CATEGORY_NAMES, GACHA_CATEGORY_ORDER, 
 from .dashboard import cached_summary
 
 MANUAL_UPLOAD_URL = 'https://share.fnnas.net/s/8b355174d383436899'
+UPLOAD_TARGETS = {
+    'rem': ('蕾姆', rem_upload.UPLOAD_URL),
+    'hhmx': ('hhmx.cn', rem_upload.HHMX_UPLOAD_URL),
+}
 LIMITED = ('traveler_limited', 'disc_limited')
 
 
@@ -45,6 +49,7 @@ def read_preferences(output: Path) -> dict:
         mode = 'dark' if data.get('theme') == 'orbit' else 'light'
     return {**data, 'color_mode': mode,
             'auto_upload': data.get('auto_upload') if type(data.get('auto_upload')) is bool else False,
+            'auto_upload_hhmx': data.get('auto_upload_hhmx') if type(data.get('auto_upload_hhmx')) is bool else False,
             'auto_update': data.get('auto_update') if type(data.get('auto_update')) is bool else True,
             'update_channel': data.get('update_channel') if data.get('update_channel') in ('stable', 'beta') else 'beta',
             'pool_columns': data.get('pool_columns') if type(data.get('pool_columns')) is int and data['pool_columns'] in (1, 2) else None}
@@ -282,7 +287,7 @@ class Application:
         return {'items': result[(page-1)*size:page*size], 'total': total, 'page': page, 'pageSize': size}
 
     def save_preferences(self, changes: dict):
-        allowed = {'color_mode', 'auto_upload', 'auto_update', 'pool_columns', 'update_channel'}
+        allowed = {'color_mode', 'auto_upload', 'auto_upload_hhmx', 'auto_update', 'pool_columns', 'update_channel'}
         if not isinstance(changes, dict) or set(changes)-allowed:
             raise ValueError('不支持的设置项')
         for key, value in changes.items():
@@ -397,11 +402,7 @@ class Application:
                 self.sync_resources(progress)
             except Exception as error:
                 warnings.append(f'本地归档已保存；资源补全未完成：{safe_message(error)}')
-        if read_preferences(self.output)['auto_upload']:
-            try:
-                self.upload(result.uid, progress, automatic=True)
-            except Exception as error:
-                warnings.append(f'本地归档已保存；自动上传未完成：{safe_message(error)}')
+        warnings.extend(self._auto_upload(result.uid, progress))
         for warning in warnings:
             progress(warning)
         return {'uid': result.uid, 'pulls': result.pull_count, 'warnings': warnings}
@@ -448,11 +449,9 @@ class Application:
                 imported = service.import_gacha_file(self.output, path)
                 self.invalidate()
                 results.append({'name': path.name, 'uid': imported.uid, 'addedGroups': imported.added_groups, 'addedPulls': imported.added_pulls})
-                if read_preferences(self.output)['auto_upload'] and imported.uid:
-                    try:
-                        self.upload(imported.uid, progress, automatic=True)
-                    except Exception as error:
-                        progress(f'本地归档已保存；自动上传未完成：{safe_message(error)}')
+                if imported.uid:
+                    for warning in self._auto_upload(imported.uid, progress):
+                        progress(warning)
             except Exception as error:
                 failures.append(f'{path.name}: {safe_message(error)}')
         if failures:
@@ -508,16 +507,36 @@ class Application:
         return {'registered': len(report['registered']), 'downloaded': len(report['downloaded']),
                 'failed': len(report['icon_failed']), 'audit': report['audit_after']}
 
-    def upload(self, uid: str, progress, *, automatic=False):
+    def _auto_upload(self, uid, progress):
+        """按两个独立开关分别上传；任一目标失败都不影响本地归档或另一个目标。"""
+        preferences = read_preferences(self.output)
+        warnings = []
+        for target, key in (('rem', 'auto_upload'), ('hhmx', 'auto_upload_hhmx')):
+            if not preferences[key]:
+                continue
+            label = UPLOAD_TARGETS[target][0]
+            try:
+                self.upload(uid, progress, automatic=True, target=target)
+            except Exception as error:
+                warnings.append(f'本地归档已保存；自动上传到{label}未完成：{safe_message(error)}')
+        return warnings
+
+    def upload(self, uid: str, progress, *, automatic=False, target='rem'):
         if self.offline:
             raise ValueError('离线模式不进行上传')
+        if target not in UPLOAD_TARGETS:
+            raise ValueError('上传目标无效')
+        label, endpoint = UPLOAD_TARGETS[target]
         path = service.export_share_for_uid(self.output, uid)
         fingerprint = rem_upload.record_fingerprint(path)
-        if automatic and rem_upload.was_uploaded(path, fingerprint, rem_upload.UPLOAD_URL):
-            progress(f'UID {path.stem} 的记录没有变化，跳过重复上传')
-            return {'skipped': True}
-        progress(f'正在上传 UID {path.stem}')
-        result = rem_upload.upload_file(path)
-        rem_upload.mark_uploaded(path.parent, result.uid, fingerprint=fingerprint)
+        if automatic and rem_upload.was_uploaded(path, fingerprint, endpoint):
+            progress(f'UID {path.stem} 的记录没有变化，跳过重复上传（{label}）')
+            return {'skipped': True, 'target': target}
+        progress(f'正在上传 UID {path.stem}（{label}）')
+        result = rem_upload.upload_file(path, endpoint=endpoint)
+        rem_upload.mark_uploaded(path.parent, result.uid, fingerprint=fingerprint, endpoint=endpoint)
+        if target == 'hhmx':
+            progress(f'已上传到 hhmx.cn：UID {result.uid}')
+            return {'uid': result.uid, 'target': target}
         progress(f'上传成功，仍需向蕾姆发送绑定指令确认更新：{result.bind_command}')
-        return {'uid': result.uid, 'bindCommand': result.bind_command}
+        return {'uid': result.uid, 'bindCommand': result.bind_command, 'target': target}

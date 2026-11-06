@@ -57,8 +57,9 @@ class ApplicationTests(unittest.TestCase):
     def test_automation_defaults_and_validation(self):
         values = read_preferences(self.output)
         self.assertFalse(values['auto_upload'])
+        self.assertFalse(values['auto_upload_hhmx'])
         self.assertTrue(values['auto_update'])
-        for change in ({'auto_upload': 'true'}, {'color_mode': 'orange'}, {'pool_columns': True}, {'update_channel': 'evil'}, {'new_option': 1}):
+        for change in ({'auto_upload': 'true'}, {'auto_upload_hhmx': 'true'}, {'color_mode': 'orange'}, {'pool_columns': True}, {'update_channel': 'evil'}, {'new_option': 1}):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 self.app.save_preferences(change)
 
@@ -122,13 +123,15 @@ class ApplicationTests(unittest.TestCase):
             self.assertEqual(send.call_count, 1)
             self.import_one(categories={'1': [group(300)]})
             self.assertEqual(send.call_count, 2)
+            self.assertTrue(all(call.kwargs.get('endpoint') == rem_upload.UPLOAD_URL for call in send.call_args_list))
         self.assertEqual(self.app.state()['summary']['pulls'], 4)
 
     def test_auto_upload_uses_each_accounts_archive_and_switch_off_keeps_manual_upload(self):
         self.app.offline = False
         self.app.save_preferences({'auto_upload': True})
         sent = []
-        def upload(path):
+        def upload(path, **kwargs):
+            self.assertEqual(kwargs.get('endpoint'), rem_upload.UPLOAD_URL)
             payload = json.loads(path.read_text('utf-8'))
             self.assertEqual(path.stem, payload['uid'])
             sent.append(payload['uid'])
@@ -143,6 +146,39 @@ class ApplicationTests(unittest.TestCase):
             self.app.upload('100000001', lambda _message: None)
             self.assertEqual(sent[-1], '100000001')
             self.assertEqual(len(sent), 3)
+
+    def test_hhmx_auto_upload_has_its_own_switch_and_endpoint(self):
+        self.app.offline = False
+        self.app.save_preferences({'auto_upload_hhmx': True})
+        reply = rem_upload.RemUploadResult(200, uid='100000001')
+        with patch.object(rem_upload, 'upload_file', return_value=reply) as send:
+            self.import_one()
+            self.import_one()
+            self.assertEqual(send.call_count, 1)
+            self.assertEqual(send.call_args.kwargs.get('endpoint'), rem_upload.HHMX_UPLOAD_URL)
+        self.assertFalse(read_preferences(self.output)['auto_upload'])
+        self.assertTrue(read_preferences(self.output)['auto_upload_hhmx'])
+
+    def test_both_auto_upload_targets_keep_independent_deduplication(self):
+        self.app.offline = False
+        self.app.save_preferences({'auto_upload': True, 'auto_upload_hhmx': True})
+        def upload(path, **_kwargs):
+            return rem_upload.RemUploadResult(200, uid=path.stem)
+        with patch.object(rem_upload, 'upload_file', side_effect=upload) as send:
+            self.import_one()
+            self.import_one()
+            self.import_one(categories={'1': [group(300)]})
+        endpoints = [call.kwargs.get('endpoint') for call in send.call_args_list]
+        self.assertEqual(endpoints, [rem_upload.UPLOAD_URL, rem_upload.HHMX_UPLOAD_URL,
+                                     rem_upload.UPLOAD_URL, rem_upload.HHMX_UPLOAD_URL])
+
+    def test_manual_hhmx_upload_does_not_return_a_rem_bind_command(self):
+        self.import_one()
+        self.app.offline = False
+        reply = rem_upload.RemUploadResult(200, uid='100000001')
+        with patch.object(rem_upload, 'upload_file', return_value=reply):
+            result = self.app.upload('100000001', lambda _message: None, target='hhmx')
+        self.assertEqual(result, {'uid': '100000001', 'target': 'hhmx'})
 
     def test_failed_auto_upload_keeps_saved_records_and_failed_capture_never_uploads(self):
         self.import_one()
@@ -361,6 +397,21 @@ class ProtocolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             engine=Engine(Path(directory)/'exports',Path(directory),lambda _v:None,offline=True)
             with self.assertRaises(ValueError): engine.dispatch('shell.execute',{})
+
+    def test_engine_routes_both_upload_targets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            engine=Engine(Path(directory)/'exports',Path(directory),lambda _v:None,offline=True)
+            seen=[]
+            def upload(uid, progress, *, automatic=False, target='rem'):
+                seen.append(target)
+                return {'uid': uid, 'target': target}
+            engine.app.upload=upload
+            engine.dispatch('upload.send',{})
+            deadline=time.monotonic()+3
+            while engine.app.busy and time.monotonic()<deadline: time.sleep(0.01)
+            engine.dispatch('upload.sendHhmx',{})
+            while engine.app.busy and time.monotonic()<deadline: time.sleep(0.01)
+            self.assertEqual(seen,['rem','hhmx'])
 
     def test_subprocess_stdout_is_only_utf8_protocol_and_has_no_qt_import(self):
         with tempfile.TemporaryDirectory() as directory:

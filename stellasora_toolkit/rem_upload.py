@@ -1,19 +1,20 @@
-"""上传抽卡记录到蕾姆(Rem)。
+"""上传抽卡记录到蕾姆(Rem)或 hhmx.cn 记录站。
 
-接口语义照搬上游 zhenkotone/stellasora_gacha 的 upload.py:
+两个服务使用同一套请求体:
 
     POST <内置上传地址>
     {"uid": "<5-15 位数字>", "record": <完整的 <uid>.json>}
     无鉴权(没有 Token / Cookie / CSRF)
-    成功 {"ok": true, "bindCommand": "星塔抽卡绑定 UID xxx"}
-    失败 {"error": "..."}; 429 会带 Retry-After
+    蕾姆成功 {"ok": true, "bindCommand": "星塔抽卡绑定 UID xxx"}
+    hhmx.cn 成功 {"ok": true, "uid": "...", "recorded": ...}
+    失败 {"error": "..."} 或 FastAPI 风格的 {"detail": "..."}; 429 会带 Retry-After
 
-上传地址是固定的, 不在界面显示、也不允许用户修改; 源码里以编码形式保存,
-避免地址被直接检索到。客户端里不存在真正的"秘密", 这只是减少暴露面。
+上传地址固定、不允许用户修改; 客户端只展示站点名称, 完整地址在源码里以编码形式
+保存, 避免被直接检索到。客户端里不存在真正的"秘密", 这只是减少暴露面。
 
-注意"上传 ≠ 绑定": 上传只是把归档暂存到服务器, 还要把 bindCommand 这条指令发给
-蕾姆才算正式更新。所以首次上传成功时界面提示一次, 状态记在账号目录下的
-rem_upload_state.json(同一 UID 以后不再弹)。
+注意"上传到蕾姆 ≠ 绑定": 上传只是把归档暂存到蕾姆服务器, 还要把 bindCommand
+这条指令发给蕾姆才算正式更新。所以首次上传成功时界面提示一次, 状态记在账号目录下的
+rem_upload_state.json(同一 UID 以后不再弹)。hhmx.cn 是独立记录站, 不需要这条指令。
 """
 
 from __future__ import annotations
@@ -32,21 +33,25 @@ from urllib.request import Request, urlopen
 from .history_schema import HISTORY_CATEGORY_KEYS
 from .account_guard import check_account_records, AccountSafetyError
 
-# 固定上传地址: 异或编码后保存, 解码逻辑在下面。改域名时只换这两行即可。
+# 固定上传地址: 异或编码后保存, 解码逻辑在下面。改域名时只换这里即可。
 _ENDPOINT_SALT = b"StellaSoraGachaTool/rem/2026"
-_ENDPOINT_BLOB = (
+_REM_ENDPOINT_BLOB = (
     "xThNu6r+Lnty2gz/Xm3S/jbmz1PF2qp3M787NyA2vr3ZKVWnuLduJmqaHvtWMJuoYryeS4eEvmEo4Q=="
+)
+_HHMX_ENDPOINT_BLOB = (
+    "xThNu6r+Lntj3RLzEXyS5mCklkuHhL5hKOE="
 )
 
 
-def _decode_endpoint(blob: str = _ENDPOINT_BLOB, salt: bytes = _ENDPOINT_SALT) -> str:
+def _decode_endpoint(blob: str = _REM_ENDPOINT_BLOB, salt: bytes = _ENDPOINT_SALT) -> str:
     key = hashlib.sha256(salt).digest()
     raw = base64.b64decode(blob)
     return bytes(byte ^ key[index % len(key)]
                  for index, byte in enumerate(raw)).decode("utf-8")
 
 
-UPLOAD_URL = _decode_endpoint()
+UPLOAD_URL = _decode_endpoint(_REM_ENDPOINT_BLOB)
+HHMX_UPLOAD_URL = _decode_endpoint(_HHMX_ENDPOINT_BLOB)
 STATE_FILENAME = "rem_upload_state.json"
 UID_RE = re.compile(r"^[0-9]{5,15}$")
 MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
@@ -155,6 +160,37 @@ def _decode(status_code: int, body: bytes) -> dict:
     return payload
 
 
+def _error_value(value: object, depth: int = 0) -> str:
+    """把 error/detail 里的各种结构压成一句可展示的中文。"""
+    if depth >= 4:
+        return ""
+    if isinstance(value, str):
+        return value.strip()[:500]
+    if isinstance(value, dict):
+        for key in ("message", "msg", "detail", "error"):
+            text = _error_value(value.get(key), depth + 1)
+            if text:
+                return text
+        return ""
+    if isinstance(value, list):
+        parts = []
+        for item in value[:3]:
+            text = _error_value(item, depth + 1)
+            if text and text not in parts:
+                parts.append(text)
+        return "；".join(parts)[:500]
+    return ""
+
+
+def _error_message(payload: dict, status_code: int) -> str:
+    """蕾姆返回 error, FastAPI/hhmx.cn 返回 detail；两种都保留给用户看。"""
+    for key in ("error", "detail", "message"):
+        text = _error_value(payload.get(key))
+        if text:
+            return text
+    return f"HTTP {status_code}"
+
+
 def diagnose(url: str) -> str:
     """给失败的上传地址做个体检, 返回一句人话(解析不了/端口不通/TLS 问题)。"""
     parts = urlsplit(url)
@@ -208,16 +244,16 @@ def upload_file(archive_path: Path, *, endpoint: str = UPLOAD_URL,
 def _finish(status_code: int, response_body: bytes, uid: str) -> RemUploadResult:
     payload = _decode(status_code, response_body)
     if not 200 <= status_code < 300 or payload.get("ok") is not True:
-        raise RemUploadError(str(payload.get("error") or f"上传失败：HTTP {status_code}"))
+        raise RemUploadError(f"上传失败：{_error_message(payload, status_code)}")
     if "uid" in payload and payload["uid"] != uid:
-        raise RemUploadError("服务器返回的 UID 不一致，请勿绑定")
+        raise RemUploadError("服务器返回的 UID 不一致，已停止上传")
     return RemUploadResult(status_code=status_code, payload=payload, uid=uid)
 
 
 def _raise_http_error(error: HTTPError, uid: str) -> None:
     response_body = error.read()
     try:
-        message = str(_decode(error.code, response_body).get("error") or f"HTTP {error.code}")
+        message = _error_message(_decode(error.code, response_body), error.code)
     except RemUploadError:
         message = f"HTTP {error.code}"
     if error.code == 429:
@@ -317,7 +353,7 @@ def mark_uploaded(directory: Path, uid: str, *, fingerprint: str = '', endpoint:
 
 
 __all__ = [
-    "UPLOAD_URL", "STATE_FILENAME", "BIND_TEMPLATE",
+    "UPLOAD_URL", "HHMX_UPLOAD_URL", "STATE_FILENAME", "BIND_TEMPLATE",
     "MAX_PAYLOAD_BYTES", "MAX_PULLS", "RemUploadError", "RemUploadResult",
     "bind_command_for", "validate_uid", "validate_record", "build_body",
     "diagnose", "upload_file", "uploaded_uids", "mark_uploaded",
