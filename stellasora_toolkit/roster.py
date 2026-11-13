@@ -520,6 +520,18 @@ def _load_texts(lua: Lua53Reader, registry: int | None) -> dict[str, str]:
     }
 
 
+def find_config_registry(process, lua: Lua53Reader) -> int | None:
+    """公开入口: 定位 ConfigData 注册表(含 UIText / Item 等配置表)。"""
+    return _find_config_registry(process, lua)
+
+
+def config_table_texts(lua: Lua53Reader, registry: int | None, table: str) -> dict[str, str]:
+    """公开入口: 读某张配置表的 ``meta.lang``(key -> 当前语言的文本)。"""
+    if registry is None:
+        return {}
+    return _config_lang(lua, registry, table)
+
+
 def _lua_bytes(lua: Lua53Reader, address: int) -> bytes:
     """按 Lua 字符串对象头取原始字节(protobuf 不能被 UTF-8 解码后再还原)。"""
     memory = lua.memory
