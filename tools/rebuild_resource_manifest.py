@@ -32,7 +32,11 @@ MANIFESTS = [
 ZIP_PATH = ROOT / "resources.zip"
 
 sys.path.insert(0, str(ROOT))
-from stellasora_toolkit.catalog import FIVE_STAR_TRAVELERS, TRAVELER_NAMES  # noqa: E402
+from stellasora_toolkit.catalog import (  # noqa: E402
+    DISC_NAMES,
+    FIVE_STAR_TRAVELERS,
+    TRAVELER_NAMES,
+)
 
 
 def sha256(data: bytes) -> str:
@@ -76,6 +80,9 @@ def backfill_metadata(items: list[dict[str, object]]) -> None:
             item.setdefault("name", TRAVELER_NAMES.get(item_id, f"旅人 #{item_id}"))
             item.setdefault("rarity", 5 if item_id in FIVE_STAR_TRAVELERS else 4)
         else:
+            # 抓取缓存只含当时的五星: 新五星秘纹还没进缓存时按目录名称补,
+            # 否则清单条目没有 name, 打出来的包会显示"秘纹 #214068"。
+            item.setdefault("name", DISC_NAMES.get(item_id, f"秘纹 #{item_id}"))
             item.setdefault("rarity", 5)
 
 

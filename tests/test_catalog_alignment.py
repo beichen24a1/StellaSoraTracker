@@ -118,6 +118,14 @@ class KnownFiveStarRegressionTests(unittest.TestCase):
             self.assertTrue(is_five_star_item(item_id))
             self.assertEqual(gacha_item_kind(item_id), "traveler")
 
+    def test_newest_five_star_traveler_is_known(self):
+        # 161 优叶: 2026-11 的新五星, 漏登记时界面显示"旅人 #161",
+        # 卡池 UP 名(优叶)对不上号, 抽到 UP 还会被判成"歪"
+        self.assertEqual(gacha_item_name(161), "优叶")
+        self.assertTrue(is_five_star_item(161))
+        self.assertEqual(gacha_item_kind(161), "traveler")
+        self.assertIn(161, FIVE_STAR_TRAVELERS)
+
     def test_newly_released_five_star_discs_are_known(self):
         expected = {
             214058: "夏日进行曲",
@@ -125,6 +133,10 @@ class KnownFiveStarRegressionTests(unittest.TestCase):
             214060: "荣誉时刻",
             214061: "睡前童话",
             214062: "美好，尽在昨日",
+            214066: "指引前路的启明星",
+            214067: "永恒的闪耀",
+            214068: "帐幕下的酣梦",
+            214069: "紧急救援",
         }
         for item_id, name in expected.items():
             with self.subTest(item_id=item_id):
