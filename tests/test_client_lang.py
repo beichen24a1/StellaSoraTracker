@@ -92,7 +92,7 @@ class AllRarityRegistrationTests(unittest.TestCase):
     """四星名称也要按当前语言注册, 否则切到日服后四星记录还是中文。"""
 
     _FETCHED = [
-        {"id": 161, "kind": "traveler", "name": "Brand New", "icon": "/stella/assets/a.png",
+        {"id": 163, "kind": "traveler", "name": "Brand New", "icon": "/stella/assets/a.png",
          "rarity": 5, "five_star": True},
         {"id": 103, "kind": "traveler", "name": "Amber", "icon": "/stella/assets/b.png",
          "rarity": 4, "five_star": False},
@@ -105,7 +105,7 @@ class AllRarityRegistrationTests(unittest.TestCase):
     def setUp(self):
         self._saved = {
             item_id: (kind, (TRAVELER_NAMES if kind == "traveler" else DISC_NAMES).get(item_id))
-            for item_id, kind in ((161, "traveler"), (103, "traveler"),
+            for item_id, kind in ((163, "traveler"), (103, "traveler"),
                                   (214999, "disc"), (211001, "disc"))
         }
 
@@ -132,10 +132,10 @@ class AllRarityRegistrationTests(unittest.TestCase):
             report = self._sync(directory)
         self.assertEqual(TRAVELER_NAMES[103], "Amber", "四星旅人也该换成当前语言的名称")
         self.assertEqual(DISC_NAMES[211001], "Morning Mist", "三星秘纹同理")
-        self.assertEqual(TRAVELER_NAMES[161], "Brand New")
+        self.assertEqual(TRAVELER_NAMES[163], "Brand New")
         self.assertEqual(DISC_NAMES[214999], "Meowing Cat God")
         # 头像只补五星: 四星不该出现在下载/失败列表里
-        self.assertEqual({item["id"] for item in report["downloaded"]}, {161, 214999})
+        self.assertEqual({item["id"] for item in report["downloaded"]}, {163, 214999})
         # 报告里的"目录规模"仍按五星统计
         self.assertEqual(report["fetched_total"], 2)
         self.assertEqual(report["named_total"], 4)
@@ -152,7 +152,7 @@ class AllRarityRegistrationTests(unittest.TestCase):
                     mock.patch.object(catalog_sync, "_download_icon", return_value=True):
                 appeared, _downloaded = catalog_sync.sync_catalog(
                     directory / "catalog_sync_state.json")
-        self.assertEqual({item["id"] for item in appeared}, {161, 214999},
+        self.assertEqual({item["id"] for item in appeared}, {163, 214999},
                          "「发现新五星」提示不该报四星")
 
 

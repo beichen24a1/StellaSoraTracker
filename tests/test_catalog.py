@@ -42,10 +42,11 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(format_attr_value(0.063), "6.3%")
 
     def test_forward_compatible_new_five_star_ids(self):
-        self.assertTrue(is_five_star_item(161))
+        # 161 优叶已经补进静态表, 前向兼容区间从 163 起(还没登记的角色)
+        self.assertTrue(is_five_star_item(163))
         self.assertTrue(is_five_star_item(214999))
         self.assertFalse(is_five_star_item(150))
-        self.assertEqual(gacha_item_name(161), "旅人 #161")
+        self.assertEqual(gacha_item_name(163), "旅人 #163")
         self.assertEqual(gacha_item_name(214999), "秘纹 #214999")
 
 

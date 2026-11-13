@@ -49,7 +49,7 @@ class OnlineLookupDecisionTests(unittest.TestCase):
 
     def test_unknown_ids_need_online_lookup(self):
         self.assertTrue(catalog_sync.needs_online_lookup([110, 999999]))
-        self.assertTrue(catalog_sync.needs_online_lookup([161]))       # 前向兼容区间
+        self.assertTrue(catalog_sync.needs_online_lookup([163]))       # 前向兼容区间(161 优叶已登记)
         self.assertTrue(catalog_sync.needs_online_lookup([214999]))    # 新秘纹区间
 
     def test_empty_records_do_not_need_lookup(self):
