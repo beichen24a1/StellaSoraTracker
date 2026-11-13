@@ -11,13 +11,13 @@ from itertools import islice
 from pathlib import Path
 from typing import Callable
 
-from . import accounts, archive_layout, catalog_sync, official_banners, rem_upload, server_config, service
+from . import accounts, archive_layout, catalog_sync, game_text, official_banners, rem_upload, server_config, service
 from .catalog import gacha_item_kind, gacha_item_name, is_five_star_item, same_item_name
 from .exporter import export_all, parse_import_text
 from .gacha_display import SparkReward, insert_spark_rewards
 from .gacha_stats import build_banner_stats_with_shared_pity
 from .presentation import activity_pools, categories, overview
-from .process import find_game_processes
+from .process import RemoteProcess, find_game_processes
 from .storage_lock import storage_transaction
 from .constants import APP_VERSION, GACHA_CATEGORY_NAMES, GACHA_CATEGORY_ORDER, GACHA_CATEGORY_PITY_LIMITS
 from .dashboard import cached_summary
@@ -399,7 +399,7 @@ class Application:
         warnings = []
         if not self.offline:
             try:
-                self.sync_resources(progress)
+                self.sync_resources(progress, pid=selected.pid)
             except Exception as error:
                 warnings.append(f'本地归档已保存；资源补全未完成：{safe_message(error)}')
         warnings.extend(self._auto_upload(result.uid, progress))
@@ -468,7 +468,7 @@ class Application:
         progress('JSON / CSV 已导出')
         return {'files': [str(path) for path in files]}
 
-    def sync_resources(self, progress):
+    def sync_resources(self, progress, pid=None):
         if not self._resource_gate.acquire(blocking=False):
             progress('资源补全已在后台进行')
             return {'pending': True}
@@ -476,7 +476,7 @@ class Application:
             for _attempt in range(3):
                 profile = server_config.active().key
                 try:
-                    result = self._sync_resources(progress)
+                    result = self._sync_resources(progress, pid)
                 except catalog_sync.CatalogLanguageChanged:
                     progress('版本已切换，正在按当前语言重新补全')
                     continue
@@ -487,10 +487,53 @@ class Application:
         finally:
             self._resource_gate.release()
 
-    def _sync_resources(self, progress):
+    def _register_names_from_memory(self, pid, progress):
+        """先用游戏内存里的配置表补名字: 离线也能用, 语言跟随客户端。
+
+        只处理"抽卡记录里出现但目录里还没有"的序号; 没有未知序号时一次内存都不读,
+        所以对大多数用户没有额外开销。读不到(游戏没开/不是管理员/没打开过相关界面)
+        就安静返回, 后面的联网补全照常进行。
+        """
+        unknown = game_text.missing_item_ids(
+            (int(item) for group in self._snapshot().gacha for item in group.get('Ids', [])),
+            gacha_item_name,
+        )
+        if not unknown:
+            return []
+        target = pid
+        if target is None:
+            processes = find_game_processes()
+            if len(processes) != 1:
+                return []
+            target = processes[0].pid
+        # 读出来的是"当前客户端语言"的名字: 读取期间用户切了服务器(国服/国际服/日服),
+        # 这批结果就是旧语言的, 注册进去会把占位符变成错误语言的正式名字, 而且这些序号
+        # 从此"已知", 外层按新语言重试也不会再读。所以先丢弃、再按当前语言重读。
+        for attempt in range(3):
+            language = server_config.active().key
+            try:
+                with RemoteProcess(target) as process:
+                    names = game_text.read_item_names(process, only=unknown)
+            except Exception as error:  # noqa: BLE001  补名是尽力而为, 失败不能影响抓取结果
+                progress(f'游戏配置表补名字未完成：{safe_message(error)}')
+                return []
+            if server_config.active().key == language:
+                break
+            progress(f'读取配置表期间切换了服务器，按当前语言重新补名（{attempt + 1}/3）')
+        else:
+            return []
+        registered = game_text.register_names(names)
+        if registered:
+            progress(f'从游戏配置表补全 {len(registered)} 个名字（离线可用）')
+            self.invalidate()
+        return registered
+
+    def _sync_resources(self, progress, pid=None):
+        # 0) 先吃游戏内存里的配置表: 不联网、立刻生效, 也覆盖离线模式
+        from_game = self._register_names_from_memory(pid, progress)
         if self.offline:
             progress('离线模式，保留内置资源与缓存')
-            return {'offline': True}
+            return {'offline': True, 'namesFromGame': len(from_game)}
         try:
             profile = server_config.active()
             if not official_banners.refresh_from_network(self.output/official_banners.cache_filename(), lang=profile.api_lang):
@@ -505,6 +548,7 @@ class Application:
         self.invalidate()
         progress(f"资源同步完成 · 补充名称 {len(report['registered'])} · 头像 {len(report['downloaded'])}")
         return {'registered': len(report['registered']), 'downloaded': len(report['downloaded']),
+                'namesFromGame': len(from_game),
                 'failed': len(report['icon_failed']), 'audit': report['audit_after']}
 
     def _auto_upload(self, uid, progress):
