@@ -1,7 +1,7 @@
 """应用级共享常量:卡池类别、官方限时池信息、版本号。"""
 from __future__ import annotations
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 
 CATEGORY_TRAVELER_LIMITED = "traveler_limited"
 CATEGORY_DISC_LIMITED = "disc_limited"
