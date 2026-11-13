@@ -323,6 +323,14 @@
       "rarity": 5
     },
     {
+      "id": 161,
+      "kind": "traveler",
+      "path": "travelers/161.png",
+      "sha256": "4a278af7de2ab5a03936ecb0bed524ac0234d4139e6081c37bfc7ccb8e53e738",
+      "name": "优叶",
+      "rarity": 5
+    },
+    {
       "id": 162,
       "kind": "traveler",
       "path": "travelers/162.png",
@@ -807,6 +815,7 @@
       "kind": "disc",
       "path": "discs/214066.png",
       "sha256": "a914b1e7fc4cc2db5674afc2c4f9663526decc396c2eba4d28ce6ed4793bef7e",
+      "name": "指引前路的启明星",
       "rarity": 5
     },
     {
@@ -814,9 +823,26 @@
       "kind": "disc",
       "path": "discs/214067.png",
       "sha256": "4bef1ace8b845b06d9de1a8dc4baeb3601de833d0d1b4fee342127fac97a2a07",
+      "name": "永恒的闪耀",
+      "rarity": 5
+    },
+    {
+      "id": 214068,
+      "kind": "disc",
+      "path": "discs/214068.png",
+      "sha256": "27423c62ba9c58ec5004b28e3e5382f1454af5b90d44a7d2fa6cdc559eb4083c",
+      "name": "帐幕下的酣梦",
+      "rarity": 5
+    },
+    {
+      "id": 214069,
+      "kind": "disc",
+      "path": "discs/214069.png",
+      "sha256": "24571e7941f4f39509fae96a0298bf5c0650d5309b5da150542ecf672201506a",
+      "name": "紧急救援",
       "rarity": 5
     }
   ],
   "archive_url": "",
-  "archive_sha256": "79e096ab7a23059c39130c0b3c224866f0d24354dbcaf278cb7175cf2ca4b9dd"
+  "archive_sha256": "7dd41364e5e6e3f37afbb93862cebbf7b17fe85a02d4f0f45f2edcd8028d832a"
 }
