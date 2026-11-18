@@ -18,7 +18,7 @@ from .process import find_game_processes
 METHODS = frozenset({
     'app.state', 'app.lifecycle', 'app.shutdown', 'records.query', 'records.capture', 'records.import', 'records.export', 'records.share',
     'affinity.read', 'affinity.load', 'home.summary',
-    'roster.read', 'roster.load',
+    'roster.read', 'roster.load', 'hhmx.documents',
     'calendar.get', 'calendar.refresh',
     'accounts.create', 'accounts.switch', 'accounts.rename', 'accounts.remove', 'accounts.merge',
     'uid.save', 'uid.read', 'processes.list', 'server.save', 'preferences.save', 'archive.backup',
@@ -111,6 +111,8 @@ class Engine:
             return app.job('读取角色数据', lambda progress, _id: app.read_roster(params.get('pid'), progress), exclusive=False)
         if method == 'roster.load':
             return app.load_roster()
+        if method == 'hhmx.documents':
+            return app.hhmx_documents(uid=params.get('uid'), kind=params.get('kind'))
         if method == 'records.import':
             paths = params.get('paths')
             if not isinstance(paths, list) or not paths or len(paths) > 100 or any(not isinstance(p, str) or Path(p).suffix.lower() not in ('.json', '.csv') for p in paths):

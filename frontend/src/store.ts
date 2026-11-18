@@ -58,6 +58,10 @@ export const useAppStore = defineStore('app', () => {
     refreshTimer = setTimeout(() => void refresh(), 80)
   }
   function event(value: EngineEvent) {
+    if (value.name === 'hhmxStatus') {
+      if (value.payload.ok) message.success('好感度或角色数据已同步到 hhmx.cn')
+      else message.warning(value.payload.message)
+    }
     if (value.name === 'closePrompt') closePrompt.value = value.payload
     if (value.name === 'task') {
       const task = value.payload as Task

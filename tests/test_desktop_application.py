@@ -58,10 +58,47 @@ class ApplicationTests(unittest.TestCase):
         values = read_preferences(self.output)
         self.assertFalse(values['auto_upload'])
         self.assertFalse(values['auto_upload_hhmx'])
+        self.assertFalse(values['auto_upload_hhmx_progress'])
         self.assertTrue(values['auto_update'])
         for change in ({'auto_upload': 'true'}, {'auto_upload_hhmx': 'true'}, {'color_mode': 'orange'}, {'pool_columns': True}, {'update_channel': 'evil'}, {'new_option': 1}):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 self.app.save_preferences(change)
+
+    def test_hhmx_progress_uses_only_confirmed_uid_and_separate_consent(self):
+        self.app.offline = False
+        self.app.save_preferences({'auto_upload_hhmx': True})
+        owner = '100000001'
+        sample = {'uid': owner, 'entries': [{'id': 103}]}
+        with patch.object(self.app, 'select_process', return_value=SimpleNamespace(name='xtlr.exe', pid=12)), \
+                patch.object(service, 'read_affinity', return_value=sample), \
+                patch.object(service, 'read_roster', return_value={'uid': owner, 'characters': [{'id': 103}]}):
+            self.app.read_affinity(12)
+            self.assertEqual([e for e in self.events if e['name'] == 'hhmxSync'], [])
+            self.app.save_preferences({'auto_upload_hhmx_progress': True})
+            self.app.read_affinity(12)
+            self.app.read_roster(12)
+            sample['uid'] = ''
+            self.app.read_affinity(12)
+            sample['uid'] = owner
+            sample['entries'] = []
+            self.app.read_affinity(12)
+        self.assertEqual([e['payload'] for e in self.events if e['name'] == 'hhmxSync'],
+                         [{'uid': owner, 'kind': 'affinity'}, {'uid': owner, 'kind': 'roster'}])
+
+    def test_hhmx_progress_rejects_wrong_uid_cache_and_checks_opt_out_again(self):
+        self.app.offline = False
+        self.app.save_preferences({'auto_upload_hhmx_progress': True})
+        owner = '100000001'
+        cache = self.output/f'{owner}_affinity.json'
+        entry = {'id': 103, 'name': '琥珀', 'level': 4, 'exp': 12, 'need': 100}
+        cache.write_text(json.dumps({'version': 1, 'uid': '100000002', 'entries': [entry]}), encoding='utf-8')
+        self.assertEqual(self.app.hhmx_documents(uid=owner, kind='affinity')['documents'], [])
+        cache.write_text(json.dumps({'version': 1, 'uid': owner, 'entries': [entry]}), encoding='utf-8')
+        documents = self.app.hhmx_documents(uid=owner, kind='affinity')['documents']
+        self.assertEqual([(doc['name'], doc['data']['uid']) for doc in documents],
+                         [(f'{owner}_affinity.json', owner)])
+        self.app.save_preferences({'auto_upload_hhmx_progress': False})
+        self.assertEqual(self.app.hhmx_documents(uid=owner, kind='affinity')['documents'], [])
 
     def test_invalid_preferences_are_read_without_rewriting_the_file(self):
         path = self.output/'ui_settings.json'
