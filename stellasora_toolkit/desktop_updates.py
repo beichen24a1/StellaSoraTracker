@@ -9,7 +9,6 @@ from pathlib import Path
 
 from . import app_updater, archive_layout
 from .application import read_preferences, safe_message
-from .project import GITHUB_REPOSITORY
 from .constants import APP_VERSION
 
 
@@ -63,9 +62,7 @@ class DesktopUpdates:
             self.publish()
 
         def work(progress, _operation):
-            override = os.environ.get(app_updater.UPDATE_MANIFEST_ENV_VAR, '').strip()
-            name = 'app_update_beta.json' if channel == 'beta' else 'app_update_github.json'
-            urls = [override or f'https://raw.githubusercontent.com/{GITHUB_REPOSITORY}/main/{name}']
+            urls = app_updater.update_urls(channel)
             try:
                 update = app_updater.check_for_update(urls, APP_VERSION)
                 with self._gate:

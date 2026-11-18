@@ -67,7 +67,7 @@ async function setAutoUploadHhmx(value: unknown) {
               <h2>自动上传到 <span>hhmx.cn</span></h2>
               <span class="auto-upload-badge" :class="{ 'is-on': autoUploadHhmx }"><i></i>{{ autoUploadState }}</span>
             </div>
-            <p>抓取或导入成功后，自动把当前 UID 的完整归档送到 hhmx.cn 记录站；同一份归档不会重复上传。这是独立开关，不会沿用蕾姆的自动上传授权。</p>
+            <p>抓取或导入成功后，自动上传当前 UID 的抽卡记录。相同记录会跳过，蕾姆的上传开关独立管理。</p>
           </div>
         </div>
         <div class="auto-upload-toggle">
@@ -85,6 +85,7 @@ async function setAutoUploadHhmx(value: unknown) {
         <span><small>触发时机</small><strong>抓取 / 导入成功后</strong></span>
         <span><small>绑定方式</small><strong>不需要蕾姆指令</strong></span>
       </div>
+      <p class="muted">好感度和角色数据请在 hhmx.cn 的「导入归档」手动选择对应 UID 的 *_affinity.json 和 *_roster.json。</p>
       <div class="auto-upload-footer">
         <p class="auto-upload-note" aria-live="polite">
           <InfoCircleOutlined aria-hidden="true" />
@@ -92,7 +93,8 @@ async function setAutoUploadHhmx(value: unknown) {
         </p>
         <a-space class="auto-upload-actions" wrap>
           <a-button size="small" :loading="store.busy" :disabled="store.busy || !canUpload" @click="store.invoke('upload.sendHhmx')">上传到 hhmx.cn</a-button>
-          <a-button size="small" type="link" @click="store.invoke('shell.manualUploadHhmx')">打开 hhmx.cn</a-button>
+          <a-button size="small" type="link" @click="store.invoke('shell.openExports')">打开数据目录</a-button>
+          <a-button size="small" type="link" @click="store.invoke('shell.manualUploadHhmx')">前往 hhmx.cn 手动导入</a-button>
         </a-space>
       </div>
     </section>

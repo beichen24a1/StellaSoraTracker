@@ -14,19 +14,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
-from .project import UPDATE_MANIFEST_URL as DEFAULT_MANIFEST_URL
+from .project import UPDATE_MANIFESTS, UPDATE_MANIFEST_URL as DEFAULT_MANIFEST_URL
 
 
-# 更新渠道只有 GitHub 一个(不接 Gitee)。
-# 清单默认从本仓库 main 分支的 app_update.json 读, 环境变量可覆盖(测试/镜像用):
-#   STELLASORA_UPDATE_MANIFEST_GITHUB : 更新清单完整 URL
 UPDATE_MANIFEST_ENV_VAR = "STELLASORA_UPDATE_MANIFEST_GITHUB"
+GITEE_MANIFEST_ENV_VAR = "STELLASORA_UPDATE_MANIFEST_GITEE"
 
 
-def update_urls() -> list[str]:
-    """返回更新清单地址: 环境变量优先, 否则用仓库里那份 app_update.json。"""
-    url = os.environ.get(UPDATE_MANIFEST_ENV_VAR, "").strip()
-    return [url or DEFAULT_MANIFEST_URL]
+def update_urls(channel: str = 'beta') -> list[str]:
+    """使用所选渠道的清单，允许分别覆盖 GitHub 和 Gitee 地址。"""
+    env_var = GITEE_MANIFEST_ENV_VAR if channel == 'gitee' else UPDATE_MANIFEST_ENV_VAR
+    url = os.environ.get(env_var, "").strip()
+    return [url or UPDATE_MANIFESTS[channel]]
 
 
 UPDATE_MANIFEST_URL = next(iter(update_urls()), DEFAULT_MANIFEST_URL)
@@ -43,6 +42,12 @@ class UpdateCancelled(RuntimeError):
 
 
 @dataclass(frozen=True)
+class UpdatePart:
+    url: str
+    size: int
+
+
+@dataclass(frozen=True)
 class AppUpdate:
     version: str
     url: str
@@ -50,6 +55,7 @@ class AppUpdate:
     notes: str
     installer_url: str | None = None
     installer_sha256: str | None = None
+    parts: tuple[UpdatePart, ...] = ()
 
     @property
     def has_installer(self) -> bool:
@@ -89,6 +95,19 @@ def parse_update_manifest(manifest: object) -> AppUpdate:
     installer_sha256 = manifest.get("installer_sha256")
     if (installer_url is None) != (installer_sha256 is None):
         raise ValueError("app installer update manifest is invalid")
+    raw_parts = manifest.get("parts", [])
+    if not isinstance(raw_parts, (tuple, list)) or len(raw_parts) > 32:
+        raise ValueError("更新分卷清单无效")
+    parts = []
+    for part in raw_parts:
+        if not isinstance(part, dict):
+            raise ValueError("更新分卷清单无效")
+        url, size = part.get("url"), part.get("size")
+        if not isinstance(url, str) or urlparse(url).scheme != "https" or not urlparse(url).hostname:
+            raise ValueError("更新分卷必须使用 HTTPS")
+        if type(size) is not int or not 0 < size <= 100_000_000:
+            raise ValueError("更新分卷大小无效")
+        parts.append(UpdatePart(url, size))
     update = AppUpdate(
         version=str(manifest["version"]),
         url=str(manifest["url"]),
@@ -96,6 +115,7 @@ def parse_update_manifest(manifest: object) -> AppUpdate:
         notes=str(manifest.get("notes", "")),
         installer_url=str(installer_url) if installer_url is not None else None,
         installer_sha256=str(installer_sha256).lower() if installer_sha256 is not None else None,
+        parts=tuple(parts),
     )
     if urlparse(update.url).scheme != "https" or len(update.sha256) != 64:
         raise ValueError("app update manifest is invalid")
@@ -167,6 +187,10 @@ def download_update(
     assert download_url is not None and expected_hash is not None
     target_dir.mkdir(parents=True, exist_ok=True)
     suffix = Path(urlparse(download_url).path).suffix or ".bin"
+    parts = () if installer else update.parts
+    sources = parts or (UpdatePart(download_url, 0),)
+    if parts:
+        suffix = ".zip"
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         if cancelled and cancelled():
@@ -174,28 +198,40 @@ def download_update(
         fd, temp_name = tempfile.mkstemp(prefix="stellasora-update-", suffix=suffix, dir=target_dir)
         digest = hashlib.sha256()
         try:
-            request = Request(download_url, headers={"User-Agent": "StellaSoraToolkit/1.0"})
-            with os.fdopen(fd, "wb") as output, urlopen(request, timeout=30) as response:
-                total = int(response.headers.get("Content-Length", 0))
-                received = 0
-                started = time.monotonic()
-                if metrics:
-                    metrics({'phase': 'downloading', 'received': 0, 'total': total, 'speed': 0, 'eta': None})
-                while True:
+            total = sum(part.size for part in parts)
+            received = 0
+            started = time.monotonic()
+            with os.fdopen(fd, "wb") as output:
+                for part in sources:
                     if cancelled and cancelled():
                         raise UpdateCancelled('软件自动更新已关闭')
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    output.write(chunk)
-                    digest.update(chunk)
-                    received += len(chunk)
-                    if metrics:
-                        speed = received / max(time.monotonic() - started, 0.001)
-                        metrics({'phase': 'downloading', 'received': received, 'total': total, 'speed': speed,
-                                 'eta': max(0, total-received)/speed if total else None})
-                    if progress and total:
-                        progress(f"正在下载软件更新 {received * 100 // total}%")
+                    request = Request(part.url, headers={"User-Agent": "StellaSoraToolkit/1.0"})
+                    with urlopen(request, timeout=30) as response:
+                        if not parts:
+                            total = int(response.headers.get("Content-Length", 0))
+                        if metrics and received == 0:
+                            metrics({'phase': 'downloading', 'received': 0, 'total': total, 'speed': 0, 'eta': None})
+                        part_received = 0
+                        while True:
+                            if cancelled and cancelled():
+                                raise UpdateCancelled('软件自动更新已关闭')
+                            chunk = response.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            part_received += len(chunk)
+                            if parts and part_received > part.size:
+                                raise ValueError("更新分卷大小不符")
+                            output.write(chunk)
+                            digest.update(chunk)
+                            received += len(chunk)
+                            if metrics:
+                                speed = received / max(time.monotonic() - started, 0.001)
+                                metrics({'phase': 'downloading', 'received': received, 'total': total, 'speed': speed,
+                                         'eta': max(0, total-received)/speed if total else None})
+                            if progress and total:
+                                progress(f"正在下载软件更新 {received * 100 // total}%")
+                        if parts and part_received != part.size:
+                            raise ValueError("更新分卷大小不符")
             if metrics:
                 metrics({'phase': 'verifying', 'received': received, 'total': total, 'speed': 0, 'eta': None})
             if digest.hexdigest().lower() != expected_hash:

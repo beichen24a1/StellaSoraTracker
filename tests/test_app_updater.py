@@ -1,4 +1,5 @@
 import hashlib
+import io
 import os
 import tempfile
 import unittest
@@ -71,6 +72,58 @@ class AppUpdaterTests(unittest.TestCase):
         )
         self.assertTrue(update.has_installer)
         self.assertEqual(update.installer_sha256, "b" * 64)
+
+    def test_downloads_split_release_in_manifest_order_and_validates_full_hash(self):
+        from dataclasses import asdict
+        from stellasora_toolkit.app_updater import download_update
+
+        parts = [b"first", b"second"]
+        update = parse_update_manifest({
+            "version": "2.1.0",
+            "url": "https://example.test/archive.zip",
+            "sha256": hashlib.sha256(b"".join(parts)).hexdigest(),
+            "parts": [{"url": f"https://example.test/archive.zip.{i:03d}", "size": len(part)}
+                      for i, part in enumerate(parts, 1)],
+        })
+        # Saved update receipts use dataclasses.asdict and reparse after restart.
+        update = parse_update_manifest(asdict(update))
+        with tempfile.TemporaryDirectory() as directory, \
+                patch("stellasora_toolkit.app_updater.urlopen", side_effect=map(io.BytesIO, parts)) as open_url:
+            metrics = []
+            path = download_update(update, Path(directory), metrics=metrics.append)
+            self.assertEqual(path.suffix, ".zip")
+            self.assertEqual(path.read_bytes(), b"".join(parts))
+            self.assertEqual([call.args[0].full_url for call in open_url.call_args_list],
+                             [part.url for part in update.parts])
+            self.assertEqual(metrics[-1]["received"], sum(map(len, parts)))
+            self.assertTrue(all(item["total"] == sum(map(len, parts)) for item in metrics))
+
+    def test_split_release_rejects_wrong_length_or_hash_without_leaving_package(self):
+        from stellasora_toolkit.app_updater import download_update
+
+        update = parse_update_manifest({
+            "version": "2.1.0",
+            "url": "https://example.test/archive.zip",
+            "sha256": hashlib.sha256(b"good").hexdigest(),
+            "parts": [{"url": "https://example.test/archive.zip.001", "size": 4}],
+        })
+        for payload, failure in [(b"end", "大小不符"), (b"extra", "大小不符"), (b"bad!", "checksum mismatch")]:
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory, \
+                    patch("stellasora_toolkit.app_updater.urlopen", return_value=io.BytesIO(payload)):
+                with self.assertRaisesRegex(ValueError, failure):
+                    download_update(update, Path(directory), retries=1)
+                self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_gitee_update_source_has_its_own_override(self):
+        from stellasora_toolkit.app_updater import update_urls
+
+        with patch.dict(os.environ, {"STELLASORA_UPDATE_MANIFEST_GITHUB": "https://example.test/github.json",
+                                     "STELLASORA_UPDATE_MANIFEST_GITEE": ""}):
+            self.assertEqual(update_urls("beta"), ["https://example.test/github.json"])
+            self.assertEqual(update_urls("gitee"),
+                             ["https://gitee.com/beichen_24/StellaSoraTracker/raw/main/app_update_gitee.json"])
+            with patch.dict(os.environ, {"STELLASORA_UPDATE_MANIFEST_GITEE": "https://example.test/gitee.json"}):
+                self.assertEqual(update_urls("gitee"), ["https://example.test/gitee.json"])
 
     def test_recognizes_only_the_default_installed_executable(self):
         with tempfile.TemporaryDirectory() as directory:
