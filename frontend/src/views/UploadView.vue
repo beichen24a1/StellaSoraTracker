@@ -7,6 +7,8 @@ import { number } from '../format'
 
 const store = useAppStore()
 const savingHhmx = ref(false)
+const savingProgress = ref(false)
+const syncingProgress = ref(false)
 const autoUploadHhmx = computed(() => Boolean(store.state?.preferences.auto_upload_hhmx))
 const offline = computed(() => Boolean(store.state?.offline))
 const canUpload = computed(() => Boolean(store.state?.summary.uid && store.state.summary.pulls && !store.state.offline))
@@ -35,6 +37,25 @@ async function setAutoUploadHhmx(value: unknown) {
     if (autoUploadHhmx.value === next) message.success(next ? '已开启自动上传到 hhmx.cn' : '已关闭 hhmx.cn 自动上传')
   } finally {
     savingHhmx.value = false
+  }
+}
+
+async function setAutoUploadProgress(value: unknown) {
+  if (savingProgress.value) return
+  savingProgress.value = true
+  try {
+    await store.savePreferences({ auto_upload_hhmx_progress: value === true })
+  } finally {
+    savingProgress.value = false
+  }
+}
+
+async function syncProgress() {
+  syncingProgress.value = true
+  try {
+    if (await store.invoke('hhmx.sync')) message.success('已将当前 UID 的现有数据同步到 hhmx.cn')
+  } finally {
+    syncingProgress.value = false
   }
 }
 </script>
@@ -85,7 +106,6 @@ async function setAutoUploadHhmx(value: unknown) {
         <span><small>触发时机</small><strong>抓取 / 导入成功后</strong></span>
         <span><small>绑定方式</small><strong>不需要蕾姆指令</strong></span>
       </div>
-      <p class="muted">好感度和角色数据请在 hhmx.cn 的「导入归档」手动选择对应 UID 的 *_affinity.json 和 *_roster.json。</p>
       <div class="auto-upload-footer">
         <p class="auto-upload-note" aria-live="polite">
           <InfoCircleOutlined aria-hidden="true" />
@@ -95,6 +115,29 @@ async function setAutoUploadHhmx(value: unknown) {
           <a-button size="small" :loading="store.busy" :disabled="store.busy || !canUpload" @click="store.invoke('upload.sendHhmx')">上传到 hhmx.cn</a-button>
           <a-button size="small" type="link" @click="store.invoke('shell.openExports')">打开数据目录</a-button>
           <a-button size="small" type="link" @click="store.invoke('shell.manualUploadHhmx')">前往 hhmx.cn 手动导入</a-button>
+        </a-space>
+      </div>
+    </section>
+
+    <section class="panel auto-upload-panel" :class="{ 'is-on': store.state?.preferences.auto_upload_hhmx_progress }">
+      <div class="auto-upload-head">
+        <div class="auto-upload-intro">
+          <div class="auto-upload-mark"><CloudSyncOutlined aria-hidden="true" /></div>
+          <div>
+            <div class="auto-upload-title"><h2>好感度和角色数据同步</h2></div>
+            <p>首次请打开站点账号页面并绑定游戏 UID。开启后，每次成功读取好感度或角色数据都会自动同步。</p>
+          </div>
+        </div>
+        <a-switch :checked="!!store.state?.preferences.auto_upload_hhmx_progress"
+                  :loading="savingProgress" :disabled="!store.state || savingProgress"
+                  aria-label="自动同步好感度和角色数据到 hhmx.cn" @change="setAutoUploadProgress"/>
+      </div>
+      <div class="auto-upload-footer">
+        <p class="auto-upload-note">可立即同步当前 UID 已保存的数据。</p>
+        <a-space class="auto-upload-actions" wrap>
+          <a-button size="small" :disabled="offline" @click="store.invoke('hhmx.account')">打开 hhmx.cn 账号页面</a-button>
+          <a-button size="small" type="primary" :loading="syncingProgress"
+                    :disabled="!store.state?.summary.uid || offline" @click="syncProgress">立即同步</a-button>
         </a-space>
       </div>
     </section>

@@ -11,7 +11,7 @@ from itertools import islice
 from pathlib import Path
 from typing import Callable
 
-from . import accounts, archive_layout, catalog_sync, game_text, official_banners, rem_upload, server_config, service
+from . import accounts, affinity, archive_layout, catalog_sync, game_text, official_banners, rem_upload, roster, server_config, service
 from .catalog import gacha_item_kind, gacha_item_name, is_five_star_item, same_item_name
 from .exporter import export_all, parse_import_text
 from .gacha_display import SparkReward, insert_spark_rewards
@@ -51,6 +51,7 @@ def read_preferences(output: Path) -> dict:
     return {**data, 'color_mode': mode,
             'auto_upload': data.get('auto_upload') if type(data.get('auto_upload')) is bool else False,
             'auto_upload_hhmx': data.get('auto_upload_hhmx') if type(data.get('auto_upload_hhmx')) is bool else False,
+            'auto_upload_hhmx_progress': data.get('auto_upload_hhmx_progress') is True,
             'auto_update': data.get('auto_update') if type(data.get('auto_update')) is bool else True,
             'update_channel': data.get('update_channel') if isinstance(data.get('update_channel'), str)
             and data['update_channel'] in UPDATE_MANIFESTS else 'beta',
@@ -289,7 +290,8 @@ class Application:
         return {'items': result[(page-1)*size:page*size], 'total': total, 'page': page, 'pageSize': size}
 
     def save_preferences(self, changes: dict):
-        allowed = {'color_mode', 'auto_upload', 'auto_upload_hhmx', 'auto_update', 'pool_columns', 'update_channel'}
+        allowed = {'color_mode', 'auto_upload', 'auto_upload_hhmx', 'auto_upload_hhmx_progress',
+                   'auto_update', 'pool_columns', 'update_channel'}
         if not isinstance(changes, dict) or set(changes)-allowed:
             raise ValueError('不支持的设置项')
         for key, value in changes.items():
@@ -419,8 +421,10 @@ class Application:
     def read_affinity(self, pid, progress=None):
         """读取角色好感度: 只读内存, 结果单独存到账号目录的 affinity.json。"""
         selected = self.select_process(pid)
-        return service.read_affinity(
+        result = service.read_affinity(
             self.output, progress=progress, process_name=selected.name, process_id=selected.pid)
+        self._request_hhmx_progress('affinity', result['uid'], result['entries'])
+        return result
 
     def load_affinity(self):
         """上次保存的好感度(游戏没开也能看)。"""
@@ -429,12 +433,43 @@ class Application:
     def read_roster(self, pid, progress=None):
         """读取角色等级/技能/天赋/纹章: 只读内存, 单独存成 roster.json。"""
         selected = self.select_process(pid)
-        return service.read_roster(
+        result = service.read_roster(
             self.output, progress=progress, process_name=selected.name, process_id=selected.pid)
+        self._request_hhmx_progress('roster', result['uid'], result['characters'])
+        return result
 
     def load_roster(self):
         """上次保存的角色数据(游戏没开也能看)。"""
         return service.load_roster(self.output)
+
+    def _request_hhmx_progress(self, kind: str, uid: str, rows: list):
+        if self.offline or not rows or not re.fullmatch(r'[0-9]{5,15}', uid):
+            return
+        if read_preferences(self.output)['auto_upload_hhmx_progress']:
+            self.emit({'type': 'event', 'name': 'hhmxSync', 'payload': {'uid': uid, 'kind': kind}})
+
+    def hhmx_documents(self, *, uid=None, kind=None):
+        """只加载指定 UID 的缓存，自动上传在发送前重新确认开关。"""
+        if self.offline:
+            raise ValueError('离线模式下无法同步 hhmx.cn')
+        sources = {'affinity': (affinity, 'entries'), 'roster': (roster, 'characters')}
+        if kind is not None:
+            if not isinstance(kind, str) or kind not in sources:
+                raise ValueError('不支持的数据类型')
+            if not read_preferences(self.output)['auto_upload_hhmx_progress']:
+                return {'documents': []}
+        else:
+            uid = service.effective_uid(self.output)
+        if not isinstance(uid, str) or not re.fullmatch(r'[0-9]{5,15}', uid):
+            raise ValueError('请先确认要上传的游戏 UID')
+        documents = []
+        for name, (source, rows_key) in sources.items():
+            if kind is not None and kind != name:
+                continue
+            payload = source.load_cache(source.cache_path(self.output, uid))
+            if payload and payload['uid'] == uid and payload[rows_key]:
+                documents.append({'name': f'{uid}_{name}.json', 'data': payload})
+        return {'uid': uid, 'documents': documents}
 
     def import_files(self, paths: list[str], progress):
         results, failures = [], []

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, protocol, session, shell } from 'electron'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { createInterface } from 'node:readline'
@@ -49,6 +49,11 @@ let recoveryWindow: BrowserWindow | null = null
 let recoveryDetails = ''
 let recoveryWorking = false
 let recoverySerial = 0
+const hhmxOrigin = 'https://hhmx.cn'
+const hhmxPartition = 'persist:hhmx-sync'
+let hhmxWindow: BrowserWindow | null = null
+let hhmxSession: Electron.Session | null = null
+let hhmxQueue = Promise.resolve()
 
 class EngineClient extends EventEmitter {
   child: ChildProcessWithoutNullStreams | null = null
@@ -81,6 +86,14 @@ class EngineClient extends EventEmitter {
           if (value.error) pending.reject(new Error(value.error.message))
           else pending.resolve(value.result)
         } else if (value.type === 'event') {
+          if (value.name === 'hhmxSync') {
+            void queueHhmxSync(value.payload)
+              .then(result => {
+                if (result.synced) window?.webContents.send('stella:event', { name: 'hhmxStatus', payload: { ok: true } })
+              })
+              .catch(error => window?.webContents.send('stella:event', { name: 'hhmxStatus', payload: { ok: false, message: error.message } }))
+            return
+          }
           this.emit('event', value)
           if (window && !window.isDestroyed()) window.webContents.send('stella:event', value)
         }
@@ -113,6 +126,84 @@ class EngineClient extends EventEmitter {
 const engine = new EngineClient()
 engine.on('failure', error => console.error(error.message))
 
+function hhmxWebSession() {
+  if (!hhmxSession) {
+    hhmxSession = session.fromPartition(hhmxPartition)
+    hhmxSession.setPermissionCheckHandler(() => false)
+    hhmxSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+    hhmxSession.on('will-download', event => event.preventDefault())
+  }
+  return hhmxSession
+}
+
+async function openHhmxAccount() {
+  if (hhmxWindow && !hhmxWindow.isDestroyed()) {
+    hhmxWindow.focus()
+    return
+  }
+  const accountWindow = new BrowserWindow({
+    parent: window ?? undefined, width: 1060, height: 780, autoHideMenuBar: true,
+    title: 'hhmx.cn · 登录与绑定 UID',
+    webPreferences: { session: hhmxWebSession(), sandbox: true, contextIsolation: true, nodeIntegration: false },
+  })
+  hhmxWindow = accountWindow
+  accountWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  accountWindow.webContents.on('will-frame-navigate', event => {
+    if (new URL(event.url).origin !== hhmxOrigin) event.preventDefault()
+  })
+  accountWindow.webContents.on('will-redirect', event => {
+    if (new URL(event.url).origin !== hhmxOrigin) event.preventDefault()
+  })
+  accountWindow.once('closed', () => { hhmxWindow = null })
+  try { await accountWindow.loadURL(hhmxOrigin + '/#/account') }
+  catch {
+    if (!accountWindow.isDestroyed()) accountWindow.close()
+    throw new Error('无法打开 hhmx.cn，请检查网络后重试')
+  }
+}
+
+async function hhmxRequest(route: string, body?: object) {
+  let response: Response
+  try {
+    response = await hhmxWebSession().fetch(hhmxOrigin + route, {
+      method: body ? 'POST' : 'GET', credentials: 'include', redirect: 'error',
+      cache: 'no-store', signal: AbortSignal.timeout(20_000),
+      ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+    })
+  } catch { throw new Error('连接 hhmx.cn 失败，数据已保存在本地，请稍后再同步') }
+  if (response.status === 401 || response.status === 403) throw new Error('请打开 hhmx.cn 账号页面，确认登录并绑定该 UID')
+  if (!response.ok) throw new Error(`hhmx.cn 同步失败（HTTP ${response.status}），数据已保存在本地`)
+  try { return await response.json() }
+  catch { throw new Error('hhmx.cn 返回了无效响应，数据已保存在本地') }
+}
+
+function queueHhmxSync(source?: { uid: string; kind: 'affinity' | 'roster' }) {
+  const work = hhmxQueue.then(async () => {
+    // The engine reads the cache for the captured UID, or the current UID for a manual request.
+    const params = source ? { uid: source.uid, kind: source.kind } : {}
+    const { uid, documents } = await engine.request('hhmx.documents', params)
+    if (!documents.length) {
+      if (source) return { synced: 0 }
+      throw new Error('当前 UID 没有可同步的好感度或角色数据')
+    }
+    const account = await hhmxRequest('/api/me')
+    if (!account?.user || !Array.isArray(account.uids) || !account.uids.some((bound: unknown) => String(bound) === uid)) {
+      throw new Error(`请先在应用内的 hhmx.cn 账号页面绑定 UID ${uid}，然后重试同步`)
+    }
+    // Authorization may have changed while the network request was pending.
+    const latest = source ? await engine.request('hhmx.documents', params) : { documents }
+    if (!latest.documents.length) return { synced: 0 }
+    const imported = await hhmxRequest(`/api/uids/${encodeURIComponent(uid)}/import`, { documents: latest.documents })
+    if (imported?.warnings?.length || latest.documents.some(({ name }: { name: string }) => {
+      const count = name.endsWith('_affinity.json') ? imported?.affinity : imported?.roster
+      return typeof count !== 'number' || count <= 0
+    })) throw new Error('hhmx.cn 未确认全部数据导入，请到网站核对后再同步')
+    return { synced: latest.documents.length }
+  })
+  hhmxQueue = work.then(() => {}, () => {})
+  return work
+}
+
 function grant(file: string, kind: 'import' | 'export') {
   const token = randomUUID(); tokens.set(token, { path: path.resolve(file), kind }); return token
 }
@@ -130,9 +221,14 @@ function trustedSender(event: Electron.IpcMainInvokeEvent) {
 
 ipcMain.handle('stella:request', async (event, method, raw) => {
   trustedSender(event)
-  if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','shell.manualUploadHhmx','shell.openCalendarArticle','engine.reconnect','app.loaded','app.closeRespond'].includes(method))) throw new Error('不支持的操作')
+  if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','shell.manualUploadHhmx','shell.openCalendarArticle','engine.reconnect','app.loaded','app.closeRespond','hhmx.account','hhmx.sync'].includes(method))) throw new Error('不支持的操作')
   if (raw !== undefined && (raw === null || Array.isArray(raw) || typeof raw !== 'object')) throw new Error('参数无效')
   const params: Record<string, any> = raw ? { ...(raw as Record<string, any>) } : {}
+  if (method === 'hhmx.account') {
+    await openHhmxAccount()
+    return { ok: true }
+  }
+  if (method === 'hhmx.sync') return queueHhmxSync()
   if (method === 'app.closeRespond') {
     if (!closePrompt || params.id !== closePrompt.id || !['stay', 'logs', 'exit'].includes(params.action)) throw new Error('退出确认已失效')
     if (params.action === 'exit' && closePrompt.reason !== 'update') throw new Error('请等待当前操作完成')

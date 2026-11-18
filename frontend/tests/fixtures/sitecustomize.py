@@ -38,3 +38,21 @@ if os.environ.get('STELLA_E2E_UPDATES') == '1':
         package = directory/'verified.zip'; package.write_bytes(DATA)
         return package
     app_updater.download_update = download
+
+if os.environ.get('STELLA_E2E_HHMX') == '1':
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    from types import SimpleNamespace
+    from stellasora_toolkit import archive_layout, service
+    from stellasora_toolkit.application import Application
+
+    def read_fixture(root, kind, rows_key, row):
+        uid = '100000001'
+        payload = {'version': 1, 'uid': uid, 'updatedAt': '2026-10-27T12:00:00+08:00', rows_key: [row]}
+        archive_layout.write_atomic(root/f'{uid}_{kind}.json', payload)
+        return payload
+
+    Application.select_process = lambda self, pid: SimpleNamespace(pid=pid, name='xtlr.exe')
+    service.read_affinity = lambda root, **kwargs: read_fixture(
+        root, 'affinity', 'entries', {'id': 103, 'name': '琥珀', 'level': 10, 'exp': 12, 'need': 100})
+    service.read_roster = lambda root, **kwargs: read_fixture(
+        root, 'roster', 'characters', {'id': 103, 'name': '琥珀', 'level': 20})
