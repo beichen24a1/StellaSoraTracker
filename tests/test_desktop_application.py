@@ -376,9 +376,11 @@ class UpdateWorkflowTests(unittest.TestCase):
 
     def test_channel_switch_never_reuses_another_channels_ready_package(self):
         self.download()
-        self.app.save_preferences({'update_channel':'stable'})
-        self.updates.channel_changed()
-        self.assertEqual(self.updates.state['status'],'idle')
+        for channel in ('stable', 'gitee'):
+            self.app.save_preferences({'update_channel':channel})
+            self.updates.channel_changed()
+            self.assertEqual(self.updates.state['status'],'idle')
+            self.assertEqual(read_preferences(self.app.output)['update_channel'], channel)
         self.app.save_preferences({'update_channel':'beta'})
         self.updates.channel_changed()
         self.assertEqual(self.updates.state['status'],'ready')

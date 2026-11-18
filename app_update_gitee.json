@@ -1,0 +1,20 @@
+{
+  "version": "2.0.1",
+  "url": "https://github.com/beichen24a1/StellaSoraTracker/releases/download/v2.0.1/StellaSoraGachaTool-2.0.1-win64.zip",
+  "sha256": "21d7541cd0588a941686e104ea9b1ee8d22c627d275c880b42f377b8e316063e",
+  "notes": "2.0.1 热更新维护版，补齐优叶与两张新秘纹，支持从游戏配置表补全未知名称。",
+  "parts": [
+    {
+      "url": "https://gitee.com/beichen_24/StellaSoraTracker/releases/download/v2.0.1/StellaSoraGachaTool-2.0.1-win64.zip.001",
+      "size": 75000000
+    },
+    {
+      "url": "https://gitee.com/beichen_24/StellaSoraTracker/releases/download/v2.0.1/StellaSoraGachaTool-2.0.1-win64.zip.002",
+      "size": 75000000
+    },
+    {
+      "url": "https://gitee.com/beichen_24/StellaSoraTracker/releases/download/v2.0.1/StellaSoraGachaTool-2.0.1-win64.zip.003",
+      "size": 65544233
+    }
+  ]
+}

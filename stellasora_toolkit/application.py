@@ -18,6 +18,7 @@ from .gacha_display import SparkReward, insert_spark_rewards
 from .gacha_stats import build_banner_stats_with_shared_pity
 from .presentation import activity_pools, categories, overview
 from .process import RemoteProcess, find_game_processes
+from .project import UPDATE_MANIFESTS
 from .storage_lock import storage_transaction
 from .constants import APP_VERSION, GACHA_CATEGORY_NAMES, GACHA_CATEGORY_ORDER, GACHA_CATEGORY_PITY_LIMITS
 from .dashboard import cached_summary
@@ -51,7 +52,8 @@ def read_preferences(output: Path) -> dict:
             'auto_upload': data.get('auto_upload') if type(data.get('auto_upload')) is bool else False,
             'auto_upload_hhmx': data.get('auto_upload_hhmx') if type(data.get('auto_upload_hhmx')) is bool else False,
             'auto_update': data.get('auto_update') if type(data.get('auto_update')) is bool else True,
-            'update_channel': data.get('update_channel') if data.get('update_channel') in ('stable', 'beta') else 'beta',
+            'update_channel': data.get('update_channel') if isinstance(data.get('update_channel'), str)
+            and data['update_channel'] in UPDATE_MANIFESTS else 'beta',
             'pool_columns': data.get('pool_columns') if type(data.get('pool_columns')) is int and data['pool_columns'] in (1, 2) else None}
 
 
@@ -293,7 +295,7 @@ class Application:
         for key, value in changes.items():
             if key == 'color_mode' and value not in ('light', 'dark'):
                 raise ValueError('主题无效')
-            if key == 'update_channel' and value not in ('stable', 'beta'):
+            if key == 'update_channel' and (not isinstance(value, str) or value not in UPDATE_MANIFESTS):
                 raise ValueError('更新渠道无效')
             if key.startswith('auto_') and type(value) is not bool:
                 raise ValueError('开关必须为布尔值')

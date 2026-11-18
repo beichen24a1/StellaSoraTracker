@@ -5,6 +5,8 @@ import { CloudDownloadOutlined, CheckCircleFilled, CloseCircleFilled } from '@an
 import { useAppStore } from '../store'
 import { bytes, duration } from '../format'
 const store = useAppStore()
+const channelLabels = { beta: 'GitHub 测试版', stable: 'GitHub 稳定版', gitee: 'Gitee 稳定版' }
+const channelLabel = computed(() => channelLabels[store.update.channel ?? store.state?.preferences.update_channel ?? 'stable'])
 const cancelOpen = ref(false)
 const downloading = computed(() => ['downloading', 'verifying'].includes(store.update.status))
 const stage = computed(() => downloading.value ? 'download' : store.update.status)
@@ -18,7 +20,7 @@ async function cancelDownload() {
 </script>
 <template>
   <AppDialog v-model:open="store.updateOpen" transition-name="stella-dialog" mask-transition-name="stella-mask" :width="680" :footer="null" :mask-closable="false" title="软件更新" variant="update" class="update-modal">
-    <div class="update-heading"><div class="update-symbol"><CloudDownloadOutlined aria-hidden="true"/></div><div><h2>{{ store.update.status === 'ready' ? '更新已就绪' : store.update.update ? '发现新版本' : '检查更新' }}</h2><p class="muted">{{ store.state?.version }} <span v-if="store.update.update"> → {{ store.update.update.version }}</span></p></div><a-tag>{{ (store.update.channel || store.state?.preferences.update_channel) === 'beta' ? '测试渠道' : '稳定渠道' }}</a-tag></div>
+    <div class="update-heading"><div class="update-symbol"><CloudDownloadOutlined aria-hidden="true"/></div><div><h2>{{ store.update.status === 'ready' ? '更新已就绪' : store.update.update ? '发现新版本' : '检查更新' }}</h2><p class="muted">{{ store.state?.version }} <span v-if="store.update.update"> → {{ store.update.update.version }}</span></p></div><a-tag>{{ channelLabel }}</a-tag></div>
     <Transition name="update-stage" mode="out-in"><div :key="stage" class="update-stage">
     <template v-if="store.update.status === 'available'">
       <div class="release-notes"><h3>本次更新</h3><pre>{{ store.update.update?.notes || '本次暂无详细更新说明。' }}</pre></div>
