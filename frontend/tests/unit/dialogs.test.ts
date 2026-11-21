@@ -36,6 +36,12 @@ it('does not clear a newer busy prompt when an exit acknowledgement arrives', as
   expect(store.closePrompt?.id).toBe('new')
   expect(document.body.textContent).toContain('正在完成操作')
 })
+it('offers a confirmed background finish before exit for archive operations', async () => {
+  const store = useAppStore(); store.closePrompt = { id: 'saving', reason: 'busy' }
+  component(CloseDialog)
+  await flushPromises(); await click('完成后退出')
+  expect(request).toHaveBeenCalledWith('app.closeRespond', { id: 'saving', action: 'exit' })
+})
 it('cancel download requires an explicit designed confirmation', async () => {
   const store = useAppStore(); store.updateOpen = true; store.update = { status: 'downloading', received: 100, total: 200 }
   component(UpdateDialog)

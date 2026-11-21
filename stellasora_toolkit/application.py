@@ -66,6 +66,9 @@ class Application:
         self.offline = offline
         self.tasks: list[dict] = []
         self.busy = False
+        self.closing = False
+        self._idle = threading.Event()
+        self._idle.set()
         self._gate = threading.RLock()
         self._threads: set[threading.Thread] = set()
         self._resource_gate = threading.Lock()
@@ -98,10 +101,13 @@ class Application:
 
     def job(self, label: str, work: Callable, *, exclusive: bool = True) -> dict:
         with self._gate:
+            if self.closing:
+                raise ValueError('软件正在退出，不再启动新任务')
             if exclusive and self.busy:
                 raise ValueError('正在完成当前操作，请稍候再试')
             if exclusive:
                 self.busy = True
+                self._idle.clear()
             task = {'id': uuid.uuid4().hex, 'label': label, 'state': 'running', 'logs': [],
                     'exclusive': exclusive, 'startedAt': datetime.now().isoformat(timespec='seconds')}
             self.tasks.insert(0, task)
@@ -120,8 +126,6 @@ class Application:
                 task['error'] = safe_message(error)
                 self.log(task, error)
             finally:
-                if exclusive:
-                    self.busy = False
                 task['finishedAt'] = datetime.now().isoformat(timespec='seconds')
                 try:
                     self._logs.parent.mkdir(parents=True, exist_ok=True)
@@ -132,10 +136,14 @@ class Application:
                 except OSError:
                     pass
                 self.invalidate()
-                self.emit({'type': 'event', 'name': 'task', 'payload': task.copy()})
-                self.emit({'type': 'event', 'name': 'changed', 'payload': {'busy': self.busy}})
                 with self._gate:
+                    if exclusive:
+                        self.busy = False
+                    self.emit({'type': 'event', 'name': 'task', 'payload': task.copy()})
+                    self.emit({'type': 'event', 'name': 'changed', 'payload': {'busy': self.busy}})
                     self._threads.discard(threading.current_thread())
+                    if exclusive:
+                        self._idle.set()
 
         worker = threading.Thread(target=run, name=f'stella-{label}', daemon=True)
         with self._gate:

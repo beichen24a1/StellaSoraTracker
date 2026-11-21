@@ -16,6 +16,37 @@ if os.environ.get('STELLA_E2E_CLOSE') == '1':
         return {'busy': value == 'busy', 'update': {'status': 'downloading' if value == 'update' else 'idle'}}
     Application.lifecycle = lifecycle
 
+if os.environ.get('STELLA_E2E_EXIT_WORK') == '1':
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    from stellasora_toolkit import app_updater, archive_layout
+    from stellasora_toolkit.application import Application
+    from stellasora_toolkit.desktop_updates import DesktopUpdates
+    check_update, download_update = DesktopUpdates.check, DesktopUpdates.download
+    # Keep real dispatch and workers; stall only external work.
+    def check(self, automatic=False):
+        self.app.offline = False
+        def network(*_args):
+            (self.app.output/'network-started.txt').write_text(str(os.getpid()), encoding='utf-8')
+            time.sleep(120)
+        app_updater.check_for_update = network
+        return check_update(self, automatic)
+    def download(self):
+        self.state = {'status': 'available', 'update': {
+            'version': '9.9.9', 'url': 'https://example.test/update.zip', 'sha256': '0'*64}}
+        def network(*_args, **_kwargs):
+            (self.app.output/'network-started.txt').write_text(str(os.getpid()), encoding='utf-8')
+            time.sleep(120)
+        app_updater.download_update = network
+        return download_update(self)
+    def save(self, _pid, _progress):
+        (self.output/'save-started.txt').write_text('started', encoding='utf-8')
+        deadline = time.monotonic()+30
+        while not (self.output/'allow-save.txt').exists() and time.monotonic() < deadline:
+            time.sleep(.02)
+        archive_layout.write_atomic(self.output/'saved-before-exit.json', {'uid': '100000001'})
+    DesktopUpdates.check, DesktopUpdates.download = check, download
+    Application.capture = save
+
 if os.environ.get('STELLA_E2E_UPDATES') == '1':
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
     from stellasora_toolkit import app_updater

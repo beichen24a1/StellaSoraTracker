@@ -432,6 +432,64 @@ class UpdateWorkflowTests(unittest.TestCase):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_shutdown_does_not_join_stalled_background_network_workers(self):
+        from threading import Event
+        with tempfile.TemporaryDirectory() as directory:
+            engine = Engine(Path(directory)/'exports', Path(directory), lambda _v: None, offline=True)
+            release = Event()
+            workers = []
+            try:
+                for label in ('检查更新', '下载更新', '同步资源'):
+                    engine.app.job(label, lambda _p, _id: release.wait(5), exclusive=False)
+                workers = list(engine.app._threads)
+                started = time.monotonic()
+                self.assertEqual(engine.dispatch('app.shutdown', {}), {'ok': True})
+                self.assertLess(time.monotonic()-started, .5)
+                self.assertTrue(engine.stopping)
+                self.assertTrue(engine.updates.cancel.is_set())
+                self.assertTrue(engine.calendar.cancelled.is_set())
+                self.assertTrue(any(worker.is_alive() for worker in workers))
+                with self.assertRaisesRegex(ValueError, '正在退出'):
+                    engine.app.job('不应启动', lambda _p, _id: None)
+            finally:
+                release.set()
+                for worker in workers:
+                    worker.join(3)
+
+    def test_confirmed_shutdown_waits_for_archive_job_and_log_to_finish(self):
+        from threading import Event, Thread
+        with tempfile.TemporaryDirectory() as directory:
+            engine = Engine(Path(directory)/'exports', Path(directory), lambda _v: None, offline=True)
+            release, started, stopped = Event(), Event(), Event()
+            archive = engine.app.output/'shutdown-test.json'
+            def save(_progress, _id):
+                started.set()
+                release.wait(5)
+                from stellasora_toolkit.archive_layout import write_atomic
+                write_atomic(archive, {'uid': '100000001', 'categories': {}})
+            engine.app.job('保存测试', save)
+            self.assertTrue(started.wait(2))
+            with self.assertRaisesRegex(ValueError, '正在保存数据'):
+                engine.dispatch('app.shutdown', {})
+            self.assertFalse(engine.stopping)
+            self.assertFalse(engine.app.closing)
+            def shutdown():
+                engine.dispatch('app.shutdown', {'waitForTasks': True})
+                stopped.set()
+            worker = Thread(target=shutdown, daemon=True)
+            worker.start()
+            try:
+                self.assertFalse(stopped.wait(.1))
+                self.assertFalse(archive.exists())
+            finally:
+                release.set()
+                worker.join(3)
+            self.assertTrue(stopped.is_set())
+            self.assertTrue(engine.stopping)
+            self.assertEqual(json.loads(archive.read_text('utf-8'))['uid'], '100000001')
+            logs = (engine.app.output/'logs/desktop.jsonl').read_text('utf-8')
+            self.assertEqual(json.loads(logs.splitlines()[-1])['state'], 'succeeded')
+
     def test_engine_rejects_unlisted_methods(self):
         with tempfile.TemporaryDirectory() as directory:
             engine=Engine(Path(directory)/'exports',Path(directory),lambda _v:None,offline=True)

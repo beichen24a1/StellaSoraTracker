@@ -40,6 +40,7 @@ const methods = new Set([
 const tokens = new Map<string, { path: string; kind: 'import' | 'export' }>()
 let window: BrowserWindow | null = null
 let quitting = false
+let closing = false
 let uiReady = false
 let initialState: any = null
 let protocolReady = false
@@ -58,7 +59,7 @@ let hhmxQueue = Promise.resolve()
 class EngineClient extends EventEmitter {
   child: ChildProcessWithoutNullStreams | null = null
   counter = 0
-  pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+  pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> | undefined }>()
   start() {
     const executable = app.isPackaged ? path.join(process.resourcesPath, 'engine/StellaSoraEngine.exe') : (process.env.STELLA_PYTHON || path.join(projectRoot, '.venv/Scripts/python.exe'))
     const args = app.isPackaged ? [] : ['-m', 'stellasora_toolkit.desktop_engine']
@@ -87,6 +88,7 @@ class EngineClient extends EventEmitter {
           else pending.resolve(value.result)
         } else if (value.type === 'event') {
           if (value.name === 'hhmxSync') {
+            if (closing) return
             void queueHhmxSync(value.payload)
               .then(result => {
                 if (result.synced) window?.webContents.send('stella:event', { name: 'hhmxStatus', payload: { ok: true } })
@@ -115,7 +117,7 @@ class EngineClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       if (!this.child || this.child.killed) return reject(new Error('后台未连接，请重新连接'))
       const id = ++this.counter
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('后台响应超时，请检查任务面板')) }, timeout)
+      const timer = timeout > 0 ? setTimeout(() => { this.pending.delete(id); reject(new Error('后台响应超时，请检查任务面板')) }, timeout) : undefined
       this.pending.set(id, { resolve, reject, timer })
       this.child.stdin.write(JSON.stringify({ id, method, params })+'\n', error => {
         if (error) { clearTimeout(timer); this.pending.delete(id); reject(error) }
@@ -221,6 +223,7 @@ function trustedSender(event: Electron.IpcMainInvokeEvent) {
 
 ipcMain.handle('stella:request', async (event, method, raw) => {
   trustedSender(event)
+  if (closing) throw new Error('软件正在退出，不再启动新操作')
   if (typeof method !== 'string' || (!methods.has(method) && !['files.selectImport','files.selectExport','shell.openExports','shell.copyArchive','shell.copyBind','shell.manualUpload','shell.manualUploadHhmx','shell.openCalendarArticle','engine.reconnect','app.loaded','app.closeRespond','hhmx.account','hhmx.sync'].includes(method))) throw new Error('不支持的操作')
   if (raw !== undefined && (raw === null || Array.isArray(raw) || typeof raw !== 'object')) throw new Error('参数无效')
   const params: Record<string, any> = raw ? { ...(raw as Record<string, any>) } : {}
@@ -231,9 +234,10 @@ ipcMain.handle('stella:request', async (event, method, raw) => {
   if (method === 'hhmx.sync') return queueHhmxSync()
   if (method === 'app.closeRespond') {
     if (!closePrompt || params.id !== closePrompt.id || !['stay', 'logs', 'exit'].includes(params.action)) throw new Error('退出确认已失效')
-    if (params.action === 'exit' && closePrompt.reason !== 'update') throw new Error('请等待当前操作完成')
+    if (params.action === 'exit' && closePrompt.reason === 'waiting') throw new Error('请等待后台响应')
+    const waitForTasks = closePrompt.reason === 'busy'
     closePrompt = null
-    if (params.action === 'exit') await requestClose(true)
+    if (params.action === 'exit') await requestClose(true, waitForTasks)
     return { ok: true }
   }
   if (method === 'app.loaded') {
@@ -326,7 +330,7 @@ function issueClosePrompt(reason: 'busy'|'update'|'waiting') {
   window?.show(); window?.focus()
 }
 
-async function requestClose(stopDownload = false) {
+async function requestClose(stopDownload = false, waitForTasks = false) {
   if (quitting || closeChecking) return
   if (closePrompt && !stopDownload) {
     window?.webContents.send('stella:event', { type: 'event', name: 'closePrompt', payload: closePrompt })
@@ -335,11 +339,16 @@ async function requestClose(stopDownload = false) {
   closeChecking = true
   try {
     const state = await engine.request('app.lifecycle', {}, 3000)
-    if (state.busy) { issueClosePrompt('busy'); return }
+    if (state.busy && !waitForTasks) { issueClosePrompt('busy'); return }
     if (['downloading', 'verifying'].includes(state.update?.status) && !stopDownload) { issueClosePrompt('update'); return }
-    await engine.request('app.shutdown')
+    closing = true
+    for (const current of BrowserWindow.getAllWindows()) current.hide()
+    // A confirmed pending archive operation finishes in the background. The
+    // shutdown response, not a UI timeout, authorizes terminating its process.
+    await engine.request('app.shutdown', { waitForTasks }, 0)
     quitting = true; app.quit()
   } catch {
+    closing = false
     if (engine.child) issueClosePrompt('waiting')
     else { quitting = true; app.quit() }
   } finally { closeChecking = false }
@@ -439,13 +448,13 @@ async function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } })
   const created = window
   const startupTimer = setTimeout(() => {
-    if (!quitting && window === created && !uiReady && !created.isDestroyed()) {
+    if (!quitting && !closing && window === created && !uiReady && !created.isDestroyed()) {
       void showRecovery(new Error('界面初始化未完成，请查看日志或重试启动')).catch(error => { console.error(error); app.exit(1) })
     }
   }, 30000)
   created.once('closed', () => clearTimeout(startupTimer))
   created.webContents.on('render-process-gone', (_event, detail) => {
-    if (!quitting && window === created) void showRecovery(new Error(`界面进程意外退出（${detail.reason}）`)).catch(error => { console.error(error); app.exit(1) })
+    if (!quitting && !closing && window === created) void showRecovery(new Error(`界面进程意外退出（${detail.reason}）`)).catch(error => { console.error(error); app.exit(1) })
   })
   window.setMenuBarVisibility(false)
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -454,7 +463,11 @@ async function createWindow() {
     if (!address.startsWith('app://ui/') && !(devUrl && address.startsWith(devUrl))) event.preventDefault()
   })
   window.webContents.on('page-title-updated', event => { event.preventDefault(); window?.setTitle('星塔旅人 · 招募档案'+(app.isPackaged ? '' : ' · Electron 预览')) })
-  window.once('ready-to-show', () => { if (uiReady) created.show(); else setTimeout(() => { if (!created.isDestroyed()) created.show() }, 8000) })
+  window.once('ready-to-show', () => {
+    if (closing || quitting) return
+    if (uiReady) created.show()
+    else setTimeout(() => { if (!closing && !quitting && !created.isDestroyed()) created.show() }, 8000)
+  })
   window.on('close', event => {
     if (quitting) return
     event.preventDefault()
@@ -467,7 +480,7 @@ async function createWindow() {
 const instance = app.requestSingleInstanceLock({ output: outputRoot })
 if (!instance) app.quit()
 else {
-  app.on('second-instance', () => { const current = recoveryWindow || window; current?.show(); current?.focus() })
+  app.on('second-instance', () => { if (closing) return; const current = recoveryWindow || window; current?.show(); current?.focus() })
   app.whenReady().then(() => startupError ? showRecovery(startupError) : createWindow()).catch(error => {
     console.error(error); void showRecovery(error).catch(fatal => { console.error(fatal); app.exit(1) })
   })

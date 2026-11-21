@@ -15,6 +15,67 @@ function fixture(name: string) {
 }
 const launch = (env: NodeJS.ProcessEnv) => electron.launch({ executablePath: path.join(frontend, 'node_modules/electron/dist/electron.exe'), args: ['--no-sandbox', '.'], cwd: frontend, env })
 
+for (const method of ['updates.check', 'updates.download']) {
+  test(`closing during stalled ${method} exits without waiting for the network`, async () => {
+    const { output, env } = fixture('exit-network')
+    Object.assign(env, { STELLA_E2E_EXIT_WORK: '1', PYTHONPATH: path.join(frontend, 'tests/fixtures') })
+    const desktop = await launch(env)
+    try {
+      const page = await desktop.firstWindow()
+      await expect(page.getByRole('heading', { name: '主页', exact: true })).toBeVisible()
+      await page.evaluate(method => (window as any).stella.request(method), method)
+      await expect.poll(() => fs.existsSync(path.join(output, 'network-started.txt'))).toBe(true)
+      const enginePid = Number(fs.readFileSync(path.join(output, 'network-started.txt'), 'utf8'))
+      const ended = desktop.waitForEvent('close', { timeout: 5000 })
+      await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close())
+      if (method === 'updates.download') {
+        await expect(page.getByRole('dialog')).toContainText('更新还在下载')
+        await page.getByRole('button', { name: '停止并退出', exact: true }).click()
+      }
+      await ended
+      await expect.poll(() => { try { process.kill(enginePid, 0); return false } catch { return true } }).toBe(true)
+      expect(fs.existsSync(path.join(output, 'updates/ready.json'))).toBe(false)
+    } finally { await desktop.close().catch(() => {}) }
+  })
+}
+
+test('finish then exit hides the window immediately and preserves the completed write', async () => {
+  const { output, env } = fixture('exit-save')
+  Object.assign(env, { STELLA_E2E_EXIT_WORK: '1', PYTHONPATH: path.join(frontend, 'tests/fixtures') })
+  const desktop = await launch(env)
+  try {
+    const page = await desktop.firstWindow()
+    await expect(page.getByRole('heading', { name: '主页', exact: true })).toBeVisible()
+    await page.evaluate(() => (window as any).stella.request('records.capture'))
+    await expect.poll(() => fs.existsSync(path.join(output, 'save-started.txt'))).toBe(true)
+    await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close())
+    await expect(page.getByRole('dialog')).toContainText('正在完成操作')
+    // Hiding an Electron window can suspend the renderer's mouse-event ACK.
+    // Observe the main-process window state before awaiting that ACK.
+    const confirmation = page.getByRole('button', { name: '完成后退出', exact: true }).click()
+    void confirmation.catch(() => {})
+    await expect.poll(() => desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some(w => w.isVisible()))).toBe(false)
+    // Cross the existing 8-second startup-show timer while the write is still
+    // pending: it must not bring the closing window back to the foreground.
+    const hiddenUntil = Date.now()+8500
+    await expect.poll(async () => {
+      if (await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some(w => w.isVisible()))) return 'visible'
+      return Date.now() >= hiddenUntil ? 'hidden' : 'waiting'
+    }, { timeout: 10000, intervals: [100] }).toBe('hidden')
+    expect(fs.existsSync(path.join(output, 'saved-before-exit.json'))).toBe(false)
+    const ended = desktop.waitForEvent('close', { timeout: 5000 })
+    fs.writeFileSync(path.join(output, 'allow-save.txt'), 'finish')
+    await ended
+    await confirmation.catch(error => { if (!String(error).includes('closed')) throw error })
+    expect(JSON.parse(fs.readFileSync(path.join(output, 'saved-before-exit.json'), 'utf8')).uid).toBe('100000001')
+    const logs = fs.readFileSync(path.join(output, 'logs/desktop.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
+    expect(logs.find(task => task.label === '抓取抽卡记录')?.state).toBe('succeeded')
+  } finally {
+    fs.writeFileSync(path.join(output, 'allow-save.txt'), 'finish')
+    await desktop.close().catch(() => {})
+  }
+})
+
 test('exit prompts are custom, deduplicated and recheck data safety before quitting', async () => {
   const { output, env } = fixture('close-dialogs')
   Object.assign(env, { STELLA_E2E_CLOSE: '1', PYTHONPATH: path.join(frontend, 'tests/fixtures') })
