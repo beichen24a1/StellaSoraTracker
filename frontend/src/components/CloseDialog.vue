@@ -9,7 +9,7 @@ const open = computed(() => !!store.closePrompt)
 const copy = computed(() => store.closePrompt?.reason === 'update'
   ? { title: '更新还在下载，要退出吗？', text: '退出会停止本次未完成的下载。下次打开软件后，你可以重新下载；已保存的招募记录和设置不会丢失。' }
   : store.closePrompt?.reason === 'busy'
-    ? { title: '正在完成操作', text: '当前任务仍在读取或保存数据，请完成后再退出。你可以打开任务与日志查看进度。' }
+    ? { title: '正在完成操作', text: '当前任务仍在读取或保存数据。选择“完成后退出”会立即关闭界面，后台完成当前操作后自动结束，保护已保存的数据。' }
     : { title: '后台还未结束', text: '后台正在结束操作，或暂时没有响应。请稍后重试；任务与日志中保留了最近的操作信息。' })
 async function respond(action: 'stay'|'logs'|'exit') {
   if (!store.closePrompt || pending.value) return
@@ -33,6 +33,6 @@ onUnmounted(() => document.removeEventListener('keydown', escape, true))
 <template>
   <AppDialog :open="open" :title="copy.title" :variant="store.closePrompt?.reason === 'update' ? 'danger' : 'info'" :footer="null" :z-index="2000" :closable="!pending" :keyboard="!pending" @cancel="respond('stay')" class="close-dialog">
     <p class="stella-dialog-description">{{ copy.text }}</p><div v-if="store.activeTask" class="stella-context-card"><span>当前任务</span><strong>{{ store.activeTask.label }}</strong><small>{{ store.activeTask.logs.at(-1)?.message }}</small></div>
-    <div class="dialog-actions"><template v-if="store.closePrompt?.reason === 'update'"><a-button :disabled="pending" @click="respond('stay')">继续下载</a-button><a-button danger type="primary" :loading="pending" @click="respond('exit')">停止并退出</a-button></template><template v-else><a-button :disabled="pending" @click="respond('stay')">返回软件</a-button><a-button type="primary" :loading="pending" @click="respond('logs')">查看任务与日志</a-button></template></div>
+    <div class="dialog-actions"><template v-if="store.closePrompt?.reason === 'update'"><a-button :disabled="pending" @click="respond('stay')">继续下载</a-button><a-button danger type="primary" :loading="pending" @click="respond('exit')">停止并退出</a-button></template><template v-else><a-button :disabled="pending" @click="respond('stay')">返回软件</a-button><a-button :type="store.closePrompt?.reason === 'busy' ? 'default' : 'primary'" :disabled="pending" @click="respond('logs')">查看任务与日志</a-button><a-button v-if="store.closePrompt?.reason === 'busy'" type="primary" :loading="pending" @click="respond('exit')">完成后退出</a-button></template></div>
   </AppDialog>
 </template>

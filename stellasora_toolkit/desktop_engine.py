@@ -43,16 +43,17 @@ class Engine:
         if method == 'home.summary':
             return app.home_summary()
         if method == 'app.shutdown':
-            if app.busy:
-                raise ValueError('正在保存数据，请稍后关闭')
+            with app._gate:
+                if app.busy and params.get('waitForTasks') is not True:
+                    raise ValueError('正在保存数据，请稍后关闭')
+                app.closing = True
             self.updates.cancel.set()
             self.calendar.cancelled.set()
-            deadline = __import__('time').monotonic()+35
-            for worker in list(app._threads):
-                if worker.name in ('stella-下载更新', 'stella-检查更新'):
-                    worker.join(max(0, deadline-__import__('time').monotonic()))
-            if any(worker.is_alive() and worker.name in ('stella-下载更新', 'stella-检查更新') for worker in list(app._threads)):
-                raise ValueError('正在停止网络请求，请稍后关闭')
+            # Exclusive jobs own archive/account transactions. Let them finish,
+            # but do not join daemon network workers: a stalled update check
+            # must never hold the window open. Unfinished downloads have no
+            # ready receipt and cannot be installed on the next launch.
+            app._idle.wait()
             self.stopping = True
             return {'ok': True}
         if method == 'calendar.get':
